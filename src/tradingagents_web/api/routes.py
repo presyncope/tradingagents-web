@@ -82,6 +82,17 @@ def import_cli_reports(store: Store = Depends(get_store)):
     return cli_import.import_reports(store)
 
 
+class DeleteRequest(BaseModel):
+    ids: list[int]
+    delete_files: bool = False
+
+
+@router.post("/runs/delete")
+def delete_runs(body: DeleteRequest, store: Store = Depends(get_store)):
+    """Delete finished jobs; queued or running ones are skipped and listed."""
+    return services.delete_jobs(store, body.ids, delete_files=body.delete_files)
+
+
 @router.get("/runs/{job_id}")
 def get_run(job_id: int, store: Store = Depends(get_store)):
     return public(services.require_job(store, job_id, "analysis"))
@@ -261,7 +272,9 @@ def resolve_symbol(q: str):
         symbol = normalize_ticker(q)
     except ValueError as exc:
         raise UserError(str(exc)) from None
-    return {"input": q, "symbol": symbol, "asset_type": detect_asset_type(symbol)}
+    # identity: {} when Yahoo has nothing for the symbol, null when it did not answer in time.
+    return {"input": q, "symbol": symbol, "asset_type": detect_asset_type(symbol),
+            "identity": services.instrument_identity(symbol)}
 
 
 @router.get("/settings")
@@ -318,3 +331,25 @@ def run_schedule(schedule_id: int, store: Store = Depends(get_store),
     if manager:
         manager.wake()
     return {"jobs": jobs, "errors": errors}
+
+
+# --- deleting ----------------------------------------------------------------------------
+
+@router.delete("/runs/{job_id}")
+def delete_run(job_id: int, delete_files: bool = False, store: Store = Depends(get_store)):
+    """Delete a finished analysis; ``delete_files`` also removes its report folder."""
+    services.require_job(store, job_id, "analysis")
+    return services.delete_jobs(store, [job_id], delete_files=delete_files)
+
+
+@router.delete("/backtests/{job_id}")
+def delete_backtest(job_id: int, delete_files: bool = False, store: Store = Depends(get_store)):
+    """Delete a finished backtest; ``delete_files`` also removes its folder unless a resumed run shares it."""
+    services.require_job(store, job_id, "backtest")
+    return services.delete_jobs(store, [job_id], delete_files=delete_files)
+
+
+@router.delete("/jobs/{job_id}")
+def delete_job(job_id: int, store: Store = Depends(get_store)):
+    services.require_job(store, job_id)
+    return services.delete_jobs(store, [job_id])

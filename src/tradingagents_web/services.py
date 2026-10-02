@@ -8,10 +8,14 @@ into a form message or a 4xx response.
 from __future__ import annotations
 
 import os
+import shutil
+from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import TimeoutError as FutureTimeout
 from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from tradingagents.agents.context import resolve_instrument_identity
 from tradingagents.default_config import DEFAULT_CONFIG
 from tradingagents.llm_clients.api_key_env import get_api_key_env
 from tradingagents.memory.log import TradingMemoryLog
@@ -40,6 +44,27 @@ class UserError(ValueError):
     def __init__(self, message: str, status: int = 400):
         super().__init__(message)
         self.status = status
+
+
+# --- instrument identity ----------------------------------------------------
+
+_lookups = ThreadPoolExecutor(max_workers=2, thread_name_prefix="identity")
+IDENTITY_WAIT = 6.0   # seconds a page waits; a slower lookup finishes in the background
+
+
+def instrument_identity(ticker: str, wait: float = IDENTITY_WAIT) -> dict | None:
+    """Company name, exchange and sector the analysis will be told, from Yahoo Finance.
+
+    The same lookup TradingAgents runs before an analysis, cached for the
+    process. Returns ``{}`` when Yahoo has nothing for the symbol, and None when
+    it has not answered within ``wait`` seconds (it is retried on rate limits);
+    the lookup then completes in the background and the next request is instant.
+    """
+    future = _lookups.submit(resolve_instrument_identity, ticker)
+    try:
+        return future.result(timeout=wait)
+    except FutureTimeout:
+        return None
 
 
 # --- saved values ---------------------------------------------------------
@@ -189,6 +214,60 @@ def report_file(job: dict) -> Path:
     if not path.is_file():
         raise UserError("리포트 파일을 찾을 수 없습니다", status=404)
     return path
+
+
+# --- deleting runs -------------------------------------------------------------
+
+IMPORT_IGNORE = "import_ignore"     # kv key: report trees the CLI import must skip
+
+
+def ignored_reports(store: Store) -> set[str]:
+    return set(store.get_value(IMPORT_IGNORE, []))
+
+
+def _inside_results(path: Path) -> bool:
+    root = Path(DEFAULT_CONFIG["results_dir"]).resolve()
+    resolved = path.resolve()
+    return resolved != root and resolved.is_relative_to(root)
+
+
+def delete_jobs(store: Store, ids: list[int], *, delete_files: bool = False) -> dict:
+    """Delete finished jobs from the history; with ``delete_files``, their report folders too.
+
+    A queued or running job is left alone (cancel it first). Files are removed
+    only when they sit under ``results_dir`` and no other job uses the same
+    folder (a resumed backtest shares its run's folder). The memory log is never
+    touched: its decisions keep informing later runs. A report tree that stays
+    on disk is remembered so the CLI import does not bring the run back.
+    """
+    deleted, active, missing, removed = [], [], [], []
+    ignore = ignored_reports(store)
+    for job_id in dict.fromkeys(ids):
+        job = store.get_job(job_id)
+        if job is None:
+            missing.append(job_id)
+            continue
+        if job["status"] in ACTIVE:
+            active.append(job_id)
+            continue
+        store.delete_job(job_id)
+        deleted.append(job_id)
+        report_dir = job.get("report_dir")
+        if not report_dir:
+            continue
+        folder = Path(report_dir)
+        shared = report_dir in store.report_dirs()
+        if delete_files and not shared and folder.is_dir() and _inside_results(folder):
+            shutil.rmtree(folder)
+            removed.append(report_dir)
+        elif job["kind"] == "analysis" and not shared:
+            ignore.add(os.path.realpath(folder))
+    store.set_value(IMPORT_IGNORE, sorted(ignore))
+    if not deleted and active:
+        raise UserError("실행 중이거나 대기 중인 작업은 삭제할 수 없습니다. 먼저 취소하세요", status=409)
+    if not deleted and missing:
+        raise UserError("작업이 없습니다", status=404)
+    return {"deleted": deleted, "skipped_active": active, "files_removed": removed}
 
 
 # --- comparing runs ----------------------------------------------------------

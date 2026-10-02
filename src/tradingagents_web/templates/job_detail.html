@@ -18,6 +18,17 @@
   {% endfor %}
 </div>
 <p><a href="/memory?ticker={{ job.ticker }}">{{ job.ticker }} 메모리 로그 보기</a></p>
+
+{% if job.status not in ('queued', 'running') %}
+<details class="danger">
+  <summary class="small">이 작업 삭제</summary>
+  <form method="post" action="/runs/{{ job.id }}/delete"
+        onsubmit="return confirm('#{{ job.id }}을 기록에서 삭제할까요? 되돌릴 수 없습니다.')">
+    
+    <button type="submit" class="outline contrast">삭제</button>
+  </form>
+</details>
+{% endif %}
 {% endblock %}
 {% block scripts %}
 {% if job.status in ('queued', 'running') %}<script>setTimeout(() => location.reload(), 3000);</script>{% endif %}

@@ -104,6 +104,8 @@ def import_reports(store: Store, root: Path | None = None) -> dict:
     """Register every report tree under ``root`` the database does not know yet."""
     root = root or report_root()
     known = {os.path.realpath(p) for p in store.report_dirs()}
+    # Runs deleted from the web history while their files stayed on disk.
+    known |= set(store.get_value("import_ignore", []))
     # A web run saves its tree just before it records the folder; while one runs
     # for a ticker, that ticker's new trees may be its own and wait for a later scan.
     busy = {t for job in store.running_jobs() for t in job["tickers"]}

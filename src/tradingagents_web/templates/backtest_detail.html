@@ -20,6 +20,7 @@
   {{ req.tickers | join(', ') }} · {{ req.start }} ~ {{ req.end }}, {{ req.every_n_days }}일 간격 ({{ req.dates | length }}개 날짜)
   · {{ req.analysts | join(', ') }} · {{ req.llm_provider }} ({{ req.deep_think_llm }} / {{ req.quick_think_llm }})
   {% if job.resumed_from %} · <a href="/backtests/{{ job.resumed_from }}">#{{ job.resumed_from }}</a>에서 이어서 실행{% endif %}
+  {% if req.estimate %}<br>예상 LLM 호출 약 {{ '{:,}'.format(req.estimate.calls) }}회 ({{ req.estimate.cells }}칸 × 칸당 약 {{ req.estimate.calls_per_cell }}회, 정산 회고 최대 {{ req.estimate.reflections_max }}회 별도){% endif %}
   {% if job.report_dir %}<br>로그 위치: <code>{{ job.report_dir }}</code>{% endif %}
 </p>
 {% if job.error %}<p class="error">{{ job.error }}</p>{% endif %}
@@ -94,5 +95,15 @@
     <div class="feed">{% for event in events | reverse %}{% with item = event | as_item %}{% include "partials/feed_item.html" %}{% endwith %}{% endfor %}</div>
   </details>
   {% endif %}
+{% endif %}
+{% if job.status not in ('queued', 'running') %}
+<details class="danger">
+  <summary class="small">이 백테스트 삭제</summary>
+  <form method="post" action="/runs/{{ job.id }}/delete"
+        onsubmit="return confirm('#{{ job.id }}을 기록에서 삭제할까요? 되돌릴 수 없습니다.')">
+    {% if job.report_dir %}<label><input type="checkbox" name="delete_files"> 백테스트 폴더도 삭제 <span class="muted small">(<code>{{ job.report_dir }}</code>, 이어서 실행한 다른 백테스트가 같은 폴더를 쓰면 남깁니다)</span></label>{% endif %}
+    <button type="submit" class="outline contrast">삭제</button>
+  </form>
+</details>
 {% endif %}
 {% endblock %}

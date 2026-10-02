@@ -144,6 +144,18 @@ class Store:
         )
         return int(cur.lastrowid)
 
+    def delete_job(self, job_id: int) -> None:
+        """Remove a job and its events; a job resumed from it keeps no dangling link."""
+        self.conn.execute("BEGIN IMMEDIATE")
+        try:
+            self.conn.execute("DELETE FROM job_events WHERE job_id = ?", (job_id,))
+            self.conn.execute("DELETE FROM jobs WHERE id = ?", (job_id,))
+            self.conn.execute("UPDATE jobs SET resumed_from = NULL WHERE resumed_from = ?", (job_id,))
+            self.conn.execute("COMMIT")
+        except Exception:
+            self.conn.execute("ROLLBACK")
+            raise
+
     def report_dirs(self) -> set[str]:
         return {r["report_dir"] for r in self.conn.execute(
             "SELECT report_dir FROM jobs WHERE report_dir IS NOT NULL")}

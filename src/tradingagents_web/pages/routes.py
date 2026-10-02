@@ -14,7 +14,9 @@ from tradingagents.default_config import DEFAULT_CONFIG
 
 from tradingagents_web import cli_import, clock, schedules, services
 from tradingagents_web.config import (
+    ANALYST_CALLS,
     ANALYST_ORDER,
+    FIXED_CALLS,
     AnalysisRequest,
     BacktestRequest,
     RunDefaults,
@@ -116,7 +118,7 @@ async def run_create(request: Request, store: Store = Depends(get_store),
 @router.get("/runs", response_class=HTMLResponse)
 def run_list(request: Request, store: Store = Depends(get_store), ticker: str = "",
              status: str = "", rating: str = "", offset: int = 0, imported: int | None = None,
-             skipped: int = 0):
+             skipped: int = 0, deleted: int | None = None, kept: int = 0):
     jobs = store.list_jobs(kind="analysis", ticker=ticker.strip().upper() or None,
                            status=status or None, rating=rating or None, limit=50, offset=offset)
     timeline = []
@@ -125,6 +127,7 @@ def run_list(request: Request, store: Store = Depends(get_store), ticker: str = 
                           key=lambda j: j["trade_date"] or "")
     return page(request, "run_list.html", jobs=jobs, ticker=ticker, status=status, rating=rating,
                 offset=offset, timeline=timeline, imported=imported, skipped=skipped,
+                deleted=deleted, kept=kept,
                 report_root=str(cli_import.report_root()))
 
 
@@ -132,6 +135,25 @@ def run_list(request: Request, store: Store = Depends(get_store), ticker: str = 
 def run_import(store: Store = Depends(get_store)):
     found = cli_import.import_reports(store)
     return see_other(f"/runs?imported={len(found['imported'])}&skipped={found['skipped']}")
+
+
+@router.post("/runs/delete")
+async def runs_delete(request: Request, store: Store = Depends(get_store)):
+    form = await request.form()
+    ids = [int(i) for i in form.getlist("ids") if str(i).isdigit()]
+    if not ids:
+        raise UserError("삭제할 실행을 고르세요")
+    result = services.delete_jobs(store, ids, delete_files=forms.checked(form, "delete_files"))
+    return see_other(f"/runs?deleted={len(result['deleted'])}&kept={len(result['skipped_active'])}")
+
+
+@router.post("/runs/{job_id}/delete")
+async def run_delete(request: Request, job_id: int, store: Store = Depends(get_store)):
+    job = services.require_job(store, job_id)
+    form = await request.form()
+    services.delete_jobs(store, [job_id], delete_files=forms.checked(form, "delete_files"))
+    target = {"analysis": "/runs", "backtest": "/backtests"}.get(job["kind"], "/")
+    return see_other(f"{target}?deleted=1")
 
 
 @router.get("/runs/compare", response_class=HTMLResponse)
@@ -238,14 +260,16 @@ def ui_ticker(request: Request, ticker: str = ""):
     except ValueError as exc:
         return page(request, "partials/ticker_preview.html", error=str(exc))
     return page(request, "partials/ticker_preview.html", symbol=symbol,
-                asset_type=detect_asset_type(symbol), raw=ticker.strip().upper())
+                asset_type=detect_asset_type(symbol), raw=ticker.strip().upper(),
+                identity=services.instrument_identity(symbol))
 
 
 # --- backtests ----------------------------------------------------------------
 
 @router.get("/backtests", response_class=HTMLResponse)
-def backtest_list(request: Request, store: Store = Depends(get_store)):
-    return page(request, "backtest_list.html", jobs=store.list_jobs(kind="backtest", limit=100))
+def backtest_list(request: Request, store: Store = Depends(get_store), deleted: int | None = None):
+    return page(request, "backtest_list.html", jobs=store.list_jobs(kind="backtest", limit=100),
+                deleted=deleted)
 
 
 @router.get("/backtests/new", response_class=HTMLResponse)
@@ -259,6 +283,7 @@ def _backtest_form(request, store, settings, values, error=None, status_code=200
     form = form or {}
     return page(request, "backtest_new.html", status_code=status_code, values=values, error=error,
                 form=form, max_cells=settings.max_backtest_cells,
+                call_weights=ANALYST_CALLS, fixed_calls=FIXED_CALLS,
                 has_portfolio=services.get_portfolio(store) is not None,
                 deep=forms.model_menu(values["llm_provider"], "deep", values["deep_think_llm"]),
                 quick=forms.model_menu(values["llm_provider"], "quick", values["quick_think_llm"]),

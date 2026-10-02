@@ -5,6 +5,7 @@
   <h1>백테스트</h1>
   <a href="/backtests/new" role="button" class="right">새 백테스트</a>
 </div>
+{% if deleted is not none %}<p class="notice">{{ deleted }}개를 삭제했습니다.</p>{% endif %}
 <p class="muted small">티커와 날짜 격자의 모든 칸에서 같은 분석을 실행하고, 보유 기간이 지난 결정을 벤치마크 대비 초과수익률(alpha)로 채점합니다. 백테스트는 자기 전용 메모리 로그를 쓰므로 실제 메모리 로그에는 기록하지 않습니다.</p>
 {% if jobs %}
 <table>

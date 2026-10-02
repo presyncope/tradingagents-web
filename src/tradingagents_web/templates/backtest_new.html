@@ -14,8 +14,6 @@
   <label>간격 (일)
     <input type="number" name="every_n_days" min="1" max="365" value="{{ form.every_n_days or 7 }}" required>
   </label>
-  <p id="cell-estimate" class="muted small"></p>
-
   <fieldset class="analysts">
     <legend><b>분석가</b></legend>
     {% for key, label in analyst_choices %}
@@ -29,8 +27,10 @@
     <input type="checkbox" name="use_portfolio" {% if not has_portfolio %}disabled{% endif %}>
     내 포트폴리오를 반영 {% if not has_portfolio %}<span class="muted small">(저장된 포트폴리오 없음)</span>{% endif %}
   </label>
+  <p id="cell-estimate" aria-live="polite"></p>
   <button type="submit">백테스트 시작</button>
-  <p class="muted small">칸 하나가 분석 한 번입니다. 한 번에 최대 {{ max_cells }}칸까지 실행할 수 있습니다.</p>
+  <p class="muted small">칸 하나가 분석 한 번입니다. 한 번에 최대 {{ max_cells }}칸까지 실행할 수 있습니다.
+    LLM 호출 수는 도구 사용 횟수에 따라 달라지는 대략적인 값입니다.</p>
 </form>
 {% endblock %}
 {% block scripts %}
@@ -47,9 +47,22 @@
     let dates = 0;
     for (let d = new Date(start); d <= last; d.setDate(d.getDate() + step)) dates++;
     const cells = tickers * dates;
-    out.textContent = `약 ${tickers}개 티커 × ${dates}개 날짜 = ${cells}칸` + (cells > {{ max_cells }} ? ' (한도 초과)' : '');
+    // The same formula as config.estimate_llm_calls.
+    const weights = {{ call_weights | tojson }};
+    const analysts = [...form.querySelectorAll('input[name=analysts]:checked')].map((el) => el.value);
+    const debate = parseInt(form.max_debate_rounds.value, 10), risk = parseInt(form.max_risk_discuss_rounds.value, 10);
+    const perCell = analysts.reduce((sum, a) => sum + (weights[a] ?? 3), 0) + 2 * debate + 3 * risk + {{ fixed_calls }};
+    const calls = cells * perCell;
+    out.innerHTML = '';
+    const line = document.createElement('span');
+    line.textContent = `${tickers}개 티커 × ${dates}개 날짜 = ${cells}칸`
+      + (cells > {{ max_cells }} ? ' (한도 초과)' : '')
+      + ` · 예상 LLM 호출 약 ${calls.toLocaleString()}회 (칸당 약 ${perCell}회`
+      + `, 정산 회고 최대 ${cells}회 별도)`;
+    out.appendChild(line);
   }
   form.addEventListener('input', estimate);
+  form.addEventListener('change', estimate);
   estimate();
 </script>
 {% endblock %}

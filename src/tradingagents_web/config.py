@@ -35,6 +35,22 @@ CRYPTO_SUFFIXES = ("-USD", "-USDT", "-USDC", "-BTC", "-ETH")
 
 OUTPUT_LANGUAGES = ["Korean", "English", "Japanese", "Chinese", "Spanish", "French", "German"]
 
+# LLM calls one analysis makes, for the estimate the backtest form shows. A
+# tool-using analyst calls the model once per tool round and once to write its
+# report, about three times in practice; the Sentiment Analyst makes one
+# structured call. Bull and Bear each speak once per debate round, the three
+# risk analysts once per risk round, and the Research Manager, Trader and
+# Portfolio Manager once each. Market + News at one round each comes to 14,
+# which is what real runs measured (13 and 14).
+ANALYST_CALLS = {"market": 3, "social": 1, "news": 3, "fundamentals": 3}
+FIXED_CALLS = 3
+
+
+def estimate_llm_calls(analysts: list[str], debate_rounds: int, risk_rounds: int) -> int:
+    """About how many LLM calls one analysis makes; tool use varies, so treat it as a guide."""
+    return (sum(ANALYST_CALLS.get(a, 3) for a in analysts) + 2 * debate_rounds + 3 * risk_rounds
+            + FIXED_CALLS)
+
 
 def _ollama_url() -> str:
     return os.environ.get("OLLAMA_BASE_URL") or "http://localhost:11434/v1"
@@ -287,7 +303,9 @@ def resolve_backtest(request: BacktestRequest, defaults: RunDefaults, portfolio:
     cells = len(tickers) * len(dates)
     if cells > max_cells:
         raise ValueError(f"셀이 {cells}개입니다. 한 번에 최대 {max_cells}개까지 실행할 수 있습니다")
-    analysts = request.analysts or defaults.analysts or list(ANALYST_ORDER)
+    analysts = order_analysts(request.analysts or defaults.analysts or list(ANALYST_ORDER), asset_type)
+    llm = resolve_llm(request, defaults)
+    per_cell = estimate_llm_calls(analysts, llm["max_debate_rounds"], llm["max_risk_discuss_rounds"])
     return {
         "tickers": tickers,
         "start": start,
@@ -295,9 +313,12 @@ def resolve_backtest(request: BacktestRequest, defaults: RunDefaults, portfolio:
         "every_n_days": request.every_n_days,
         "dates": dates,
         "asset_type": asset_type,
-        "analysts": order_analysts(analysts, asset_type),
+        "analysts": analysts,
         "portfolio": portfolio if request.use_portfolio else None,
-        **resolve_llm(request, defaults),
+        # A guide shown with the run; each settled decision adds one reflection call.
+        "estimate": {"cells": cells, "calls_per_cell": per_cell, "calls": cells * per_cell,
+                     "reflections_max": cells},
+        **llm,
     }
 
 

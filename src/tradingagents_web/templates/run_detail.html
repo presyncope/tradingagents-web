@@ -87,6 +87,18 @@
   <pre class="small">{{ job.settings | tojson(indent=2) }}</pre>
 </details>
 {% endif %}
+
+{% if job.status not in ('queued', 'running') %}
+<details class="danger">
+  <summary class="small">이 실행 삭제</summary>
+  <form method="post" action="/runs/{{ job.id }}/delete"
+        onsubmit="return confirm('#{{ job.id }}을 기록에서 삭제할까요? 되돌릴 수 없습니다.')">
+    {% if job.report_dir %}<label><input type="checkbox" name="delete_files"> 리포트 파일도 삭제 <span class="muted small">(<code>{{ job.report_dir }}</code>)</span></label>{% endif %}
+    <p class="muted small">메모리 로그의 결정은 그대로 남습니다.{% if job.resumable %} 체크포인트는 설정 화면에서 지울 수 있습니다.{% endif %}</p>
+    <button type="submit" class="outline contrast">삭제</button>
+  </form>
+</details>
+{% endif %}
 {% endblock %}
 {% block scripts %}
 {% if job.status in ('queued', 'running') %}

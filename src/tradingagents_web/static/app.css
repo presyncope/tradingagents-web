@@ -84,3 +84,5 @@ table.compare th { white-space: nowrap; }
 .row > input, .row > select, .row > button, .row > form > button, .row > [role=button] { width: auto; }
 #compare-button { width: auto; }
 td.date { white-space: nowrap; }
+details.danger { margin-top: 2rem; }
+details.danger > summary { color: var(--bad); }

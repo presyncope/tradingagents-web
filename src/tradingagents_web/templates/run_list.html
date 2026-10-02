@@ -11,6 +11,9 @@
 {% if imported is not none %}
 <p class="notice">CLI 리포트 {{ imported }}개를 가져왔습니다{% if skipped %} (이미 있는 {{ skipped }}개는 건너뜀){% endif %}.</p>
 {% endif %}
+{% if deleted is not none %}
+<p class="notice">{{ deleted }}개를 삭제했습니다{% if kept %}. 실행 중이거나 대기 중인 {{ kept }}개는 남겼습니다(먼저 취소하세요){% endif %}.</p>
+{% endif %}
 <form method="get" action="/runs" class="row">
   <input type="text" name="ticker" value="{{ ticker }}" placeholder="티커" style="max-width: 10rem">
   <select name="status" style="max-width: 10rem">
@@ -39,11 +42,11 @@
 {% if jobs %}
 <form method="get" action="/runs/compare" id="compare-form">
 <table>
-  <thead><tr><th title="비교할 실행 선택"></th><th>#</th><th>티커</th><th>분석일</th><th>상태</th><th>등급</th><th>분석가</th><th>모델</th><th>생성</th></tr></thead>
+  <thead><tr><th title="비교하거나 삭제할 실행 선택"></th><th>#</th><th>티커</th><th>분석일</th><th>상태</th><th>등급</th><th>분석가</th><th>모델</th><th>생성</th></tr></thead>
   <tbody>
   {% for job in jobs %}
     <tr>
-      <td>{% if job.status == 'completed' %}<input type="checkbox" name="ids" value="{{ job.id }}" aria-label="#{{ job.id }} 비교">{% endif %}</td>
+      <td>{% if job.status not in ('queued', 'running') %}<input type="checkbox" name="ids" value="{{ job.id }}" data-completed="{{ 'yes' if job.status == 'completed' else 'no' }}" aria-label="#{{ job.id }} 선택">{% endif %}</td>
       <td><a href="/runs/{{ job.id }}">{{ job.id }}</a></td>
       <td>{{ job.ticker }}{% if job.source == 'cli' %} <span class="badge pending" title="CLI에서 가져온 리포트">CLI</span>{% elif job.source == 'schedule' %} <span class="badge pending" title="예약 실행">예약</span>{% endif %}</td>
       <td class="date">{{ job.trade_date or "-" }}</td>
@@ -56,8 +59,13 @@
   {% endfor %}
   </tbody>
 </table>
-<button type="submit" class="outline" id="compare-button" disabled>선택한 실행 비교</button>
-<span class="muted small">완료된 실행을 2~4개 고르세요.</span>
+<div class="row">
+  <button type="submit" class="outline" id="compare-button" disabled>선택한 실행 비교</button>
+  <span class="muted small">비교는 완료된 실행 2~4개.</span>
+  <label class="right small"><input type="checkbox" name="delete_files"> 리포트 파일도 삭제</label>
+  <button type="submit" class="outline contrast" id="delete-button" disabled formaction="/runs/delete" formmethod="post"
+          onclick="return confirm('선택한 실행을 기록에서 삭제할까요? 메모리 로그는 그대로 남습니다.')">선택 삭제</button>
+</div>
 </form>
 <div class="row">
   {% if offset > 0 %}<a href="?ticker={{ ticker }}&status={{ status }}&rating={{ rating }}&offset={{ [offset - 50, 0] | max }}">이전</a>{% endif %}
@@ -71,10 +79,13 @@
 <script>
   const compareForm = document.getElementById('compare-form');
   if (compareForm) {
-    const button = document.getElementById('compare-button');
+    const compare = document.getElementById('compare-button');
+    const remove = document.getElementById('delete-button');
     compareForm.addEventListener('change', () => {
-      const n = compareForm.querySelectorAll('input[name=ids]:checked').length;
-      button.disabled = n < 2 || n > 4;
+      const picked = [...compareForm.querySelectorAll('input[name=ids]:checked')];
+      const allCompleted = picked.every((el) => el.dataset.completed === 'yes');
+      compare.disabled = picked.length < 2 || picked.length > 4 || !allCompleted;
+      remove.disabled = picked.length === 0;
     });
   }
 </script>

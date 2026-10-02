@@ -131,3 +131,16 @@ def offline(monkeypatch, home):
     model = ScriptedModel()
     patch_offline(monkeypatch, model)
     return model
+
+
+from tradingagents_web import services as _services  # noqa: E402
+
+REAL_INSTRUMENT_IDENTITY = _services.instrument_identity
+
+
+@pytest.fixture(autouse=True)
+def no_identity_lookup(monkeypatch):
+    """Ticker previews ask Yahoo Finance for the company; tests never reach the network."""
+    from tradingagents_web import services
+
+    monkeypatch.setattr(services, "instrument_identity", lambda ticker, wait=0: {})

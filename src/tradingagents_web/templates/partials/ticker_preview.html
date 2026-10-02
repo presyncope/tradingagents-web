@@ -5,4 +5,12 @@
   분석할 심볼: <b>{{ symbol }}</b>{% if symbol != raw %} ({{ raw }}에서 변환){% endif %}
   · {{ '암호화폐: Fundamentals 분석가는 제외됩니다' if asset_type == 'crypto' else '주식' }}
 </small>
+{% if identity %}
+<br><small class="identity"><b>{{ identity.company_name or symbol }}</b>
+  {% for part in [identity.exchange, identity.sector, identity.industry] if part %} · {{ part }}{% endfor %}</small>
+{% elif identity is none %}
+<br><small class="muted">회사 정보를 아직 받지 못했습니다. 잠시 뒤 다시 입력하면 표시됩니다.</small>
+{% else %}
+<br><small class="error">회사 정보를 찾지 못했습니다. 티커와 거래소 접미사(예: .KS, .T)를 확인하세요. 일시적인 조회 실패일 수도 있습니다.</small>
+{% endif %}
 {% endif %}
