@@ -7,6 +7,21 @@
   포지션이 하나도 없는 포트폴리오는 "보유 없음(flat)"으로 반영되며, 포트폴리오를 반영하지 않은 실행과는 다릅니다.
   실행에는 요청 시점의 포트폴리오가 저장되므로, 여기서 수정해도 진행 중이거나 재개할 실행에는 영향이 없습니다.
 </p>
+{% if sync_file %}
+<article class="sync">
+  <div class="row">
+    <div>
+      <b>자동 동기화{% if sync and sync.source %} ({{ sync.source | capitalize }}){% endif %}</b>
+      {% if sync and sync.synced_at %} · 기준 시각 {{ sync.synced_at | when }}{% endif %}
+      {% if sync and sync.positions is not none %} · {{ sync.positions }}종목{% endif %}
+      <br><span class="muted small"><code>{{ sync_file }}</code> 파일이 바뀔 때마다(30초마다 확인) 아래 포트폴리오를 덮어씁니다.
+        여기서 직접 고친 내용은 다음 동기화 때 바뀝니다.{% if sync and sync.checked_at %} 마지막 확인 {{ sync.checked_at | when }}.{% endif %}</span>
+      {% if sync and sync.error %}<br><span class="error small">마지막 동기화 실패: {{ sync.error }}</span>{% endif %}
+    </div>
+    <form method="post" action="/portfolio/sync" class="inline right"><button class="outline">지금 다시 불러오기</button></form>
+  </div>
+</article>
+{% endif %}
 {% if saved %}<p class="notice">저장했습니다.</p>{% endif %}
 {% if error %}<p class="error">{{ error }}</p>{% endif %}
 {% if portfolio is none %}<p class="empty">저장된 포트폴리오가 없습니다.</p>{% endif %}

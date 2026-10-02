@@ -202,6 +202,23 @@ def put_portfolio(body: dict, store: Store = Depends(get_store)):
     return services.save_portfolio(store, body)
 
 
+@router.get("/portfolio/sync")
+def get_portfolio_sync(store: Store = Depends(get_store)):
+    """Where the portfolio was last synced from, and when (null without a portfolio file)."""
+    return services.portfolio_sync_status(store)
+
+
+@router.post("/portfolio/sync")
+def post_portfolio_sync(store: Store = Depends(get_store), settings: AppSettings = Depends(get_settings)):
+    """Read TRADINGAGENTS_WEB_PORTFOLIO_FILE now, changed or not."""
+    if not settings.portfolio_file:
+        raise UserError("TRADINGAGENTS_WEB_PORTFOLIO_FILE이 설정되지 않았습니다")
+    status = services.sync_portfolio_file(store, settings.portfolio_file, force=True)
+    if status.get("error"):
+        raise UserError(status["error"])
+    return status
+
+
 @router.delete("/portfolio", status_code=204)
 def delete_portfolio(store: Store = Depends(get_store)):
     store.set_value("portfolio", None)

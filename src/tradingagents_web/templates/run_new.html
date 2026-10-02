@@ -28,6 +28,7 @@
     <label>
       <input type="checkbox" name="use_portfolio" {% if values.use_portfolio %}checked{% endif %} {% if not has_portfolio %}disabled{% endif %}>
       내 포트폴리오를 반영
+      {% if portfolio_sync and portfolio_sync.synced_at %}<span class="muted small">({{ portfolio_sync.source | capitalize }} {{ portfolio_sync.synced_at | when }} 기준)</span>{% endif %}
       {% if not has_portfolio %}<span class="muted small">(<a href="/portfolio">포트폴리오</a>를 먼저 저장하세요)</span>{% endif %}
     </label>
     <label>

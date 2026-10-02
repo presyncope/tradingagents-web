@@ -78,6 +78,7 @@ JSON API 문서는 `/api/docs`에 있습니다.
 - 실행 설정의 우선순위는 실행 폼, 설정 화면의 기본값, `.env`의 `TRADINGAGENTS_*`, 패키지 기본값 순입니다.
 - CLI가 `results_dir/reports/`에 저장한 리포트는 서버 시작 때와 "CLI 리포트 가져오기" 버튼으로 실행 이력에 등록됩니다. 파일은 옮기지 않습니다.
 - 예약은 `TRADINGAGENTS_WEB_TZ`(예: `Asia/Seoul`, 없으면 시스템 시간대) 기준으로 실행되고, 화면의 시각도 이 시간대로 표시됩니다. 서버가 꺼져 있던 동안 지난 예약은 켜질 때 한 번만 실행합니다.
+- 다른 도구가 갱신하는 포트폴리오 파일을 `TRADINGAGENTS_WEB_PORTFOLIO_FILE`로 지정하면, 서버가 30초마다 확인해 파일이 바뀔 때 저장된 포트폴리오를 덮어씁니다. 예: [systematic-trading](https://github.com/presyncope/systematic-trading)의 `toss-export-portfolio`가 하루 두 번 쓰는 Toss USD 보유 종목과 현금(`data/toss/portfolio.json`).
 - 실행을 삭제하면 웹 기록과 진행 이벤트만 지웁니다. "리포트 파일도 삭제"를 고르면 `results_dir` 안의 리포트 폴더도 지우고(다른 실행이 같은 폴더를 쓰면 남김), 메모리 로그의 결정은 어느 경우에도 남깁니다. 파일을 남긴 실행은 CLI 리포트 가져오기로 다시 등록되지 않습니다.
 - 서버는 프로세스 하나로만 실행합니다(Job 스케줄러가 서버 안에 있습니다).
 

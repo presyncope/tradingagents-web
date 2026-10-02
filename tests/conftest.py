@@ -144,3 +144,9 @@ def no_identity_lookup(monkeypatch):
     from tradingagents_web import services
 
     monkeypatch.setattr(services, "instrument_identity", lambda ticker, wait=0: {})
+
+
+@pytest.fixture(autouse=True)
+def no_portfolio_file(monkeypatch):
+    """The developer's .env may name a live portfolio file; tests set their own."""
+    monkeypatch.delenv("TRADINGAGENTS_WEB_PORTFOLIO_FILE", raising=False)

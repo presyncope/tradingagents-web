@@ -14,7 +14,7 @@ from fastapi.responses import JSONResponse, PlainTextResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
-from tradingagents_web import cli_import
+from tradingagents_web import cli_import, services
 from tradingagents_web.jobs.manager import JobManager
 from tradingagents_web.render import templates
 from tradingagents_web.services import UserError
@@ -45,13 +45,34 @@ def create_app(settings: AppSettings | None = None, *, manager: JobManager | Non
         finally:
             store.close()
 
+    def sync_portfolio() -> None:
+        store = Store(settings.db_path, init=False)
+        try:
+            status = services.sync_portfolio_file(store, settings.portfolio_file)
+            if status.get("error"):
+                logger.warning("Portfolio file %s: %s", settings.portfolio_file, status["error"])
+        except Exception:
+            logger.exception("Syncing the portfolio file failed")
+        finally:
+            store.close()
+
+    async def follow_portfolio_file() -> None:
+        while True:
+            await asyncio.to_thread(sync_portfolio)
+            await asyncio.sleep(settings.portfolio_poll)
+
     @asynccontextmanager
     async def lifespan(app: FastAPI):
+        poller = None
         if manager is not None and start_manager:
             await manager.start()
             if settings.import_on_start:
                 await asyncio.to_thread(import_cli_reports)
+            if settings.portfolio_file:
+                poller = asyncio.create_task(follow_portfolio_file())
         yield
+        if poller:
+            poller.cancel()
         if manager is not None and start_manager:
             await manager.stop()
 

@@ -35,3 +35,10 @@ class AppSettings:
     poll_interval: float = 1.0
     # Register reports the CLI saved under results_dir/reports when the server starts.
     import_on_start: bool = True
+    # A portfolio file another tool keeps current (e.g. systematic-trading's
+    # toss-export-portfolio); the saved portfolio follows it whenever it changes.
+    portfolio_file: Path | None = field(default_factory=lambda: (
+        Path(os.environ["TRADINGAGENTS_WEB_PORTFOLIO_FILE"]).expanduser()
+        if os.environ.get("TRADINGAGENTS_WEB_PORTFOLIO_FILE") else None))
+    # Seconds between checks of portfolio_file.
+    portfolio_poll: float = 30.0

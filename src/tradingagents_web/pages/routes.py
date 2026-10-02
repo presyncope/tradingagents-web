@@ -73,6 +73,8 @@ def _run_form(request: Request, store: Store, values: dict, error: str | None = 
     return page(request, "run_new.html", status_code=status_code, values=values, error=error,
                 ticker=ticker, trade_date=trade_date or forms.last_weekday(),
                 has_portfolio=services.get_portfolio(store) is not None,
+                portfolio_sync=services.portfolio_sync_status(store)
+                if request.app.state.settings.portfolio_file else None,
                 deep=forms.model_menu(values["llm_provider"], "deep", values["deep_think_llm"]),
                 quick=forms.model_menu(values["llm_provider"], "quick", values["quick_think_llm"]),
                 **forms.choices())
@@ -461,10 +463,28 @@ def schedule_delete(schedule_id: int, store: Store = Depends(get_store)):
 
 # --- portfolio ------------------------------------------------------------------
 
+def _portfolio_page(request, store, *, saved=False, error=None, portfolio=None, status_code=200):
+    settings = request.app.state.settings
+    return page(request, "portfolio.html", status_code=status_code,
+                portfolio=portfolio if portfolio is not None else services.get_portfolio(store),
+                saved=saved, error=error, sync_file=settings.portfolio_file,
+                sync=services.portfolio_sync_status(store) if settings.portfolio_file else None)
+
+
 @router.get("/portfolio", response_class=HTMLResponse)
 def portfolio_page(request: Request, store: Store = Depends(get_store), saved: int = 0):
-    return page(request, "portfolio.html", portfolio=services.get_portfolio(store),
-                saved=bool(saved), error=None)
+    return _portfolio_page(request, store, saved=bool(saved))
+
+
+@router.post("/portfolio/sync")
+def portfolio_sync(request: Request, store: Store = Depends(get_store),
+                   settings: AppSettings = Depends(get_settings)):
+    if not settings.portfolio_file:
+        raise UserError("TRADINGAGENTS_WEB_PORTFOLIO_FILE이 설정되지 않았습니다")
+    status = services.sync_portfolio_file(store, settings.portfolio_file, force=True)
+    if status.get("error"):
+        return _portfolio_page(request, store, error=status["error"], status_code=400)
+    return see_other("/portfolio?saved=1")
 
 
 @router.post("/portfolio")
@@ -485,8 +505,7 @@ async def portfolio_save(request: Request, store: Store = Depends(get_store)):
     try:
         services.save_portfolio(store, body)
     except UserError as exc:
-        return page(request, "portfolio.html", status_code=400, portfolio=body, saved=False,
-                    error=str(exc))
+        return _portfolio_page(request, store, portfolio=body, error=str(exc), status_code=400)
     return see_other("/portfolio?saved=1")
 
 
@@ -495,13 +514,11 @@ async def portfolio_import(request: Request, file: UploadFile, store: Store = De
     try:
         body = json.loads((await file.read()).decode("utf-8"))
     except (UnicodeDecodeError, json.JSONDecodeError) as exc:
-        return page(request, "portfolio.html", status_code=400,
-                    portfolio=services.get_portfolio(store), saved=False, error=f"JSON이 아닙니다: {exc}")
+        return _portfolio_page(request, store, error=f"JSON이 아닙니다: {exc}", status_code=400)
     try:
         services.save_portfolio(store, body)
     except UserError as exc:
-        return page(request, "portfolio.html", status_code=400,
-                    portfolio=services.get_portfolio(store), saved=False, error=str(exc))
+        return _portfolio_page(request, store, error=str(exc), status_code=400)
     return see_other("/portfolio?saved=1")
 
 

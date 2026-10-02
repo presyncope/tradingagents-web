@@ -7,6 +7,7 @@ into a form message or a 4xx response.
 
 from __future__ import annotations
 
+import json
 import os
 import shutil
 from concurrent.futures import ThreadPoolExecutor
@@ -98,6 +99,44 @@ def save_portfolio(store: Store, body: dict) -> dict:
     value = portfolio.model_dump()
     store.set_value("portfolio", value)
     return value
+
+
+PORTFOLIO_SYNC = "portfolio_sync"   # kv key: where the portfolio came from and when
+
+
+def portfolio_sync_status(store: Store) -> dict | None:
+    return store.get_value(PORTFOLIO_SYNC)
+
+
+def sync_portfolio_file(store: Store, path: Path, *, force: bool = False) -> dict:
+    """Replace the saved portfolio with ``path`` when the file changed since the last sync.
+
+    The file is a PortfolioContext document (``cash``, ``currency``, ``positions``);
+    ``source`` and ``synced_at``, when present, say where and when it was taken.
+    A file that is missing or does not parse leaves the saved portfolio as it was
+    and records the error. Returns the sync status.
+    """
+    status = dict(portfolio_sync_status(store) or {})
+    status.update(file=str(path), checked_at=datetime.now().astimezone().isoformat(timespec="seconds"))
+    try:
+        mtime = path.stat().st_mtime
+    except OSError as exc:
+        status["error"] = f"파일을 읽을 수 없습니다: {exc.strerror or exc}"
+        store.set_value(PORTFOLIO_SYNC, status)
+        return status
+    if not force and status.get("mtime") == mtime and not status.get("error"):
+        return status
+    try:
+        body = json.loads(path.read_text(encoding="utf-8"))
+        portfolio = save_portfolio(store, {k: body.get(k) for k in ("cash", "currency", "positions")})
+    except (ValueError, OSError) as exc:      # JSONDecodeError and UserError are ValueErrors
+        status["error"] = str(exc)
+        store.set_value(PORTFOLIO_SYNC, status)
+        return status
+    status.update(mtime=mtime, error=None, source=body.get("source"), synced_at=body.get("synced_at"),
+                  imported_at=status["checked_at"], positions=len(portfolio["positions"]))
+    store.set_value(PORTFOLIO_SYNC, status)
+    return status
 
 
 def _portfolio_for(store: Store, use: bool) -> dict | None:
