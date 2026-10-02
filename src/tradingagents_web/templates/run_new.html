@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+{% block title %}새 분석{% endblock %}
+{% block content %}
+<h1>새 분석</h1>
+{% if error %}<p class="error">{{ error }}</p>{% endif %}
+<form method="post" action="/runs">
+  <div class="model-pair">
+    <label>티커
+      <input type="text" name="ticker" value="{{ ticker }}" placeholder="NVDA, 005930.KS, BTC-USD" required
+             hx-get="/ui/ticker" hx-trigger="input changed delay:400ms, load" hx-target="#ticker-preview">
+      <div id="ticker-preview"></div>
+    </label>
+    <label>분석일
+      <input type="date" name="trade_date" value="{{ trade_date }}" required>
+    </label>
+  </div>
+
+  <fieldset class="analysts">
+    <legend><b>분석가</b> <span class="muted small">동시에 실행되고, 모두 끝나면 Bull/Bear 토론이 시작됩니다</span></legend>
+    {% for key, label in analyst_choices %}
+    <label><input type="checkbox" name="analysts" value="{{ key }}" {% if key in values.analysts %}checked{% endif %}> {{ label }}</label>
+    {% endfor %}
+  </fieldset>
+
+  {% include "partials/llm_fields.html" %}
+
+  <fieldset>
+    <label>
+      <input type="checkbox" name="use_portfolio" {% if values.use_portfolio %}checked{% endif %} {% if not has_portfolio %}disabled{% endif %}>
+      내 포트폴리오를 반영
+      {% if not has_portfolio %}<span class="muted small">(<a href="/portfolio">포트폴리오</a>를 먼저 저장하세요)</span>{% endif %}
+    </label>
+    <label>
+      <input type="checkbox" name="checkpoint" {% if values.checkpoint %}checked{% endif %}>
+      체크포인트 저장 <span class="muted small">(중단되면 마지막으로 끝난 단계부터 재개)</span>
+    </label>
+    <label>자산 유형
+      <select name="asset_type">
+        <option value="">티커로 자동 판별</option>
+        <option value="stock">주식</option>
+        <option value="crypto">암호화폐</option>
+      </select>
+    </label>
+  </fieldset>
+  <button type="submit">분석 시작</button>
+  <p class="muted small">분석 한 번에 LLM을 수십 번 호출합니다. 비용은 선택한 제공자의 요금을 따릅니다.</p>
+</form>
+{% endblock %}

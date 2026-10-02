@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% block title %}백테스트{% endblock %}
+{% block content %}
+<div class="row">
+  <h1>백테스트</h1>
+  <a href="/backtests/new" role="button" class="right">새 백테스트</a>
+</div>
+<p class="muted small">티커와 날짜 격자의 모든 칸에서 같은 분석을 실행하고, 보유 기간이 지난 결정을 벤치마크 대비 초과수익률(alpha)로 채점합니다. 백테스트는 자기 전용 메모리 로그를 쓰므로 실제 메모리 로그에는 기록하지 않습니다.</p>
+{% if jobs %}
+<table>
+  <thead><tr><th>#</th><th>티커</th><th>기간</th><th>간격</th><th>상태</th><th>진행</th><th>생성</th></tr></thead>
+  <tbody>
+  {% for job in jobs %}
+    <tr>
+      <td><a href="/backtests/{{ job.id }}">{{ job.id }}</a></td>
+      <td>{{ job.request.tickers | join(', ') }}</td>
+      <td>{{ job.request.start }} ~ {{ job.request.end }}</td>
+      <td>{{ job.request.every_n_days }}일</td>
+      <td><span class="badge {{ job.status }}">{{ job.status | status_label }}</span></td>
+      <td>{{ job.progress_done or 0 }} / {{ job.progress_total or (job.request.tickers | length) * (job.request.dates | length) }}</td>
+      <td class="small">{{ job.created_at | when }}</td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% else %}
+<p class="empty">아직 백테스트가 없습니다.</p>
+{% endif %}
+{% endblock %}

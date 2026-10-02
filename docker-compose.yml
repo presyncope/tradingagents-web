@@ -1,0 +1,15 @@
+services:
+  web:
+    build:
+      context: .
+      args:
+        UID: ${UID:-1000}
+    env_file:
+      - .env
+    ports:
+      # Loopback only: the container serves without a login unless TRADINGAGENTS_WEB_TOKEN is set.
+      - "127.0.0.1:${TRADINGAGENTS_WEB_PORT:-8000}:8000"
+    volumes:
+      # The CLI's data folder on the host: reports, memory log, checkpoints and the web DB are shared.
+      - ${TRADINGAGENTS_DATA_DIR:-${HOME}/.tradingagents}:/home/appuser/.tradingagents
+    restart: unless-stopped

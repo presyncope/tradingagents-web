@@ -1,0 +1,98 @@
+{% extends "base.html" %}
+{% block title %}백테스트 #{{ job.id }}{% endblock %}
+{% block content %}
+{% set req = job.request %}
+{% set live = job.status in ('queued', 'running') %}
+<div class="row">
+  <h1>백테스트 #{{ job.id }}</h1>
+  <span class="badge {{ job.status }}">{{ job.status | status_label }}</span>
+  <div class="right row">
+    {% if live %}<form method="post" action="/runs/{{ job.id }}/cancel" class="inline"><button class="secondary outline">취소</button></form>{% endif %}
+    {% if job.resumable and job.status != 'completed' %}<form method="post" action="/runs/{{ job.id }}/resume" class="inline"><button>이어서 실행</button></form>{% endif %}
+    {% if job.status == 'completed' and summary and summary.pending %}
+    <form method="post" action="/runs/{{ job.id }}/resume" class="inline"
+          title="실행이 끝난 칸은 건너뛰고, 보유 기간이 지난 결정의 수익률을 계산해 채점합니다">
+      <button class="outline">대기 칸 정산</button></form>
+    {% endif %}
+  </div>
+</div>
+<p class="muted small">
+  {{ req.tickers | join(', ') }} · {{ req.start }} ~ {{ req.end }}, {{ req.every_n_days }}일 간격 ({{ req.dates | length }}개 날짜)
+  · {{ req.analysts | join(', ') }} · {{ req.llm_provider }} ({{ req.deep_think_llm }} / {{ req.quick_think_llm }})
+  {% if job.resumed_from %} · <a href="/backtests/{{ job.resumed_from }}">#{{ job.resumed_from }}</a>에서 이어서 실행{% endif %}
+  {% if job.report_dir %}<br>로그 위치: <code>{{ job.report_dir }}</code>{% endif %}
+</p>
+{% if job.error %}<p class="error">{{ job.error }}</p>{% endif %}
+
+{% if live %}
+<div hx-get="/backtests/{{ job.id }}/progress" hx-trigger="every 3s" hx-swap="innerHTML">
+  {% include "partials/backtest_progress.html" %}
+</div>
+{% else %}
+  {% if summary %}
+  <h2>등급별 결과</h2>
+  <p class="muted small">정산된 칸 {{ summary.resolved }}개 · 대기 {{ summary.pending }}개{% if summary.unscored %} · 등급 없음 {{ summary.unscored }}개{% endif %} · 보유 기간 {{ summary.holding }}</p>
+  <table>
+    <thead><tr><th>등급</th><th>건수</th><th>방향 적중률</th><th>평균 alpha</th></tr></thead>
+    <tbody>
+    {% for rating, score in summary.by_rating.items() %}
+      <tr>
+        <td><span class="rating {{ rating | rating_class }}">{{ rating }}</span></td>
+        <td>{{ score.count }}</td>
+        <td>{{ '%.0f%%' % (score.hit_rate * 100) if score.hit_rate is not none else '방향 없음' }}</td>
+        <td>{{ '%+.2f%%' % (score.mean_alpha * 100) }}</td>
+      </tr>
+    {% else %}
+      <tr><td colspan="4" class="empty">아직 정산된 칸이 없습니다. 보유 기간이 지난 뒤 "대기 칸 정산"을 누르면 채점됩니다.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
+
+  {% if grid %}
+  <h2>티커 × 날짜</h2>
+  <p class="muted small">칸 색 = 등급, 테두리 = 방향 적중(초록) 또는 빗나감(빨강). 숫자는 벤치마크 대비 alpha입니다.</p>
+  <div style="overflow-x: auto">
+  <table class="heat">
+    <thead><tr><th></th>{% for d in dates %}<th>{{ d[5:] }}</th>{% endfor %}</tr></thead>
+    <tbody>
+    {% for ticker in req.tickers %}
+      <tr>
+        <th>{{ ticker }}</th>
+        {% for d in dates %}
+          {% set cell = grid.get(ticker, {}).get(d) %}
+          {% if cell %}
+          <td class="cell {{ cell.rating | rating_class }} {% if cell.hit is true %}hit{% elif cell.hit is false %}miss{% endif %}"
+              title="{{ ticker }} {{ d }}: {{ cell.rating }}{% if cell.pending %} (대기){% else %}, 수익률 {{ cell.raw }}, alpha {{ cell.alpha }}{% endif %}">
+            <span class="rating {{ cell.rating | rating_class }}">{{ cell.rating }}</span><br>
+            <span class="small">{{ '대기' if cell.pending else cell.alpha }}</span>
+          </td>
+          {% else %}
+          <td class="muted">–</td>
+          {% endif %}
+        {% endfor %}
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  {% endif %}
+
+  {% if result.failures %}
+  <h2>실패한 칸</h2>
+  <ul>{% for ticker, d, message in result.failures %}<li><b>{{ ticker }} {{ d }}</b>: <span class="small">{{ message }}</span></li>{% endfor %}</ul>
+  {% endif %}
+  {% if result.settlement_failures %}
+  <h2>정산 실패</h2>
+  <ul>{% for ticker, message in result.settlement_failures %}<li><b>{{ ticker }}</b>: <span class="small">{{ message }}</span></li>{% endfor %}</ul>
+  {% endif %}
+  {% if result.summary_text %}
+  <details><summary class="small">요약 원문 (summarize)</summary><pre class="summary">{{ result.summary_text }}</pre></details>
+  {% endif %}
+  {% if events %}
+  <details><summary class="small">진행 기록</summary>
+    <div class="feed">{% for event in events | reverse %}{% with item = event | as_item %}{% include "partials/feed_item.html" %}{% endwith %}{% endfor %}</div>
+  </details>
+  {% endif %}
+{% endif %}
+{% endblock %}

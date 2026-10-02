@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+{% block title %}실행 이력{% endblock %}
+{% block content %}
+<h1>실행 이력</h1>
+<form method="get" action="/runs" class="row">
+  <input type="text" name="ticker" value="{{ ticker }}" placeholder="티커" style="max-width: 10rem">
+  <select name="status" style="max-width: 10rem">
+    <option value="">모든 상태</option>
+    {% for s in ['queued', 'running', 'completed', 'failed', 'cancelled'] %}
+    <option value="{{ s }}" {% if s == status %}selected{% endif %}>{{ s | status_label }}</option>
+    {% endfor %}
+  </select>
+  <select name="rating" style="max-width: 10rem">
+    <option value="">모든 등급</option>
+    {% for r in ['Buy', 'Overweight', 'Hold', 'Underweight', 'Sell', 'REVIEW'] %}
+    <option value="{{ r }}" {% if r == rating %}selected{% endif %}>{{ r }}</option>
+    {% endfor %}
+  </select>
+  <button type="submit" class="outline">필터</button>
+</form>
+
+{% if timeline %}
+<h2>{{ ticker | upper }} 날짜별 등급</h2>
+<table class="heat">
+  <tr>{% for job in timeline %}<th><a href="/runs/{{ job.id }}">{{ job.trade_date }}</a></th>{% endfor %}</tr>
+  <tr>{% for job in timeline %}<td class="{{ job.rating | rating_class }}"><span class="rating {{ job.rating | rating_class }}">{{ job.rating }}</span></td>{% endfor %}</tr>
+</table>
+{% endif %}
+
+{% if jobs %}
+<table>
+  <thead><tr><th>#</th><th>티커</th><th>분석일</th><th>상태</th><th>등급</th><th>분석가</th><th>모델</th><th>생성</th></tr></thead>
+  <tbody>
+  {% for job in jobs %}
+    <tr>
+      <td><a href="/runs/{{ job.id }}">{{ job.id }}</a></td>
+      <td>{{ job.ticker }}</td>
+      <td>{{ job.trade_date }}</td>
+      <td><span class="badge {{ job.status }}">{{ job.status | status_label }}</span></td>
+      <td>{% if job.rating %}<span class="rating {{ job.rating | rating_class }}">{{ job.rating }}</span>{% endif %}</td>
+      <td class="small">{{ job.request.analysts | join(', ') }}</td>
+      <td class="small">{{ job.request.llm_provider }} · {{ job.request.deep_think_llm }}</td>
+      <td class="small">{{ job.created_at | when }}</td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+<div class="row">
+  {% if offset > 0 %}<a href="?ticker={{ ticker }}&status={{ status }}&rating={{ rating }}&offset={{ [offset - 50, 0] | max }}">이전</a>{% endif %}
+  {% if jobs | length == 50 %}<a href="?ticker={{ ticker }}&status={{ status }}&rating={{ rating }}&offset={{ offset + 50 }}">다음</a>{% endif %}
+</div>
+{% else %}
+<p class="empty">조건에 맞는 실행이 없습니다.</p>
+{% endif %}
+{% endblock %}

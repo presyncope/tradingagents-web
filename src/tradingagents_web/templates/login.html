@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+{% block title %}로그인{% endblock %}
+{% block content %}
+<article style="max-width: 28rem; margin: 2rem auto;">
+  <h1>로그인</h1>
+  <p class="muted small">서버의 <code>TRADINGAGENTS_WEB_TOKEN</code> 값을 입력하세요.</p>
+  {% if error %}<p class="error">{{ error }}</p>{% endif %}
+  <form method="post" action="/login">
+    <input type="hidden" name="next" value="{{ next }}">
+    <input type="password" name="token" placeholder="토큰" required autofocus>
+    <button type="submit">로그인</button>
+  </form>
+</article>
+{% endblock %}

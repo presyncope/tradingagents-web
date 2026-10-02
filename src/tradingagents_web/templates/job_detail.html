@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+{% block title %}{{ job.kind | kind_label }} #{{ job.id }}{% endblock %}
+{% block content %}
+<div class="row">
+  <h1>{{ job.kind | kind_label }} · {{ job.ticker }}</h1>
+  <span class="badge {{ job.status }}">{{ job.status | status_label }}</span>
+  {% if job.status in ('queued', 'running') %}
+  <form method="post" action="/runs/{{ job.id }}/cancel" class="inline right"><button class="secondary outline">취소</button></form>
+  {% endif %}
+</div>
+<p class="muted small">#{{ job.id }} · {{ job.request.llm_provider }} ({{ job.request.quick_think_llm }}) · 생성 {{ job.created_at | when }}{% if job.started_at %} · {{ duration(job) }}{% endif %}</p>
+{% if job.error %}<p class="error">{{ job.error }}</p>{% endif %}
+<div class="feed">
+  {% for event in events | reverse %}
+    {% with item = event | as_item %}{% include "partials/feed_item.html" %}{% endwith %}
+  {% else %}
+  <p class="empty">아직 기록이 없습니다.</p>
+  {% endfor %}
+</div>
+<p><a href="/memory?ticker={{ job.ticker }}">{{ job.ticker }} 메모리 로그 보기</a></p>
+{% endblock %}
+{% block scripts %}
+{% if job.status in ('queued', 'running') %}<script>setTimeout(() => location.reload(), 3000);</script>{% endif %}
+{% endblock %}

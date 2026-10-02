@@ -1,0 +1,8 @@
+{% if stats %}
+<div class="stats">
+  <span>LLM 호출 <b>{{ stats.llm_calls }}</b></span>
+  <span>도구 호출 <b>{{ stats.tool_calls }}</b></span>
+  <span>입력 토큰 <b>{{ '{:,}'.format(stats.tokens_in) }}</b></span>
+  <span>출력 토큰 <b>{{ '{:,}'.format(stats.tokens_out) }}</b></span>
+</div>
+{% endif %}

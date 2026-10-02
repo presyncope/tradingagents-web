@@ -1,0 +1,15 @@
+{% set total = job.progress_total or (job.request.tickers | length) * (job.request.dates | length) %}
+{% set done = job.progress_done or 0 %}
+<progress value="{{ done }}" max="{{ total }}"></progress>
+<p class="small">{{ done }} / {{ total }}칸 완료 · {{ job.status | status_label }}{% if job.started_at %} · {{ duration(job) }}{% endif %}</p>
+{% if events %}
+<div class="feed">
+  {% for event in events | reverse %}
+    {% if event.type == 'cell' %}
+    <div class="item"><span class="kind">분석</span> {{ event.data.ticker }} {{ event.data.date }} <span class="muted small">({{ event.data.index }}/{{ event.data.of }} · {{ event.ts | when }})</span></div>
+    {% else %}
+    {% with item = event | as_item %}{% include "partials/feed_item.html" %}{% endwith %}
+    {% endif %}
+  {% endfor %}
+</div>
+{% endif %}

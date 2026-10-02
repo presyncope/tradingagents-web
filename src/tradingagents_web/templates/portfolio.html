@@ -1,0 +1,68 @@
+{% extends "base.html" %}
+{% block title %}포트폴리오{% endblock %}
+{% block content %}
+<h1>포트폴리오</h1>
+<p class="muted small">
+  분석에서 "내 포트폴리오를 반영"을 켜면 Trader, 리스크 토론자, Portfolio Manager가 이 계좌를 기준으로 판단합니다.
+  포지션이 하나도 없는 포트폴리오는 "보유 없음(flat)"으로 반영되며, 포트폴리오를 반영하지 않은 실행과는 다릅니다.
+  실행에는 요청 시점의 포트폴리오가 저장되므로, 여기서 수정해도 진행 중이거나 재개할 실행에는 영향이 없습니다.
+</p>
+{% if saved %}<p class="notice">저장했습니다.</p>{% endif %}
+{% if error %}<p class="error">{{ error }}</p>{% endif %}
+{% if portfolio is none %}<p class="empty">저장된 포트폴리오가 없습니다.</p>{% endif %}
+{% set p = portfolio or {} %}
+<form method="post" action="/portfolio">
+  <div class="model-pair">
+    <label>현금 <input type="number" step="any" name="cash" value="{{ p.cash if p.cash is not none else '' }}"></label>
+    <label>통화 <input type="text" name="currency" value="{{ p.currency or '' }}" placeholder="USD, KRW"></label>
+  </div>
+  <table class="positions">
+    <thead><tr><th>티커</th><th>수량 (공매도는 음수)</th><th>평균 단가</th></tr></thead>
+    <tbody id="positions">
+      {% for pos in (p.positions or []) %}
+      <tr>
+        <td><input type="text" name="pos_ticker" value="{{ pos.ticker }}"></td>
+        <td><input type="number" step="any" name="pos_quantity" value="{{ pos.quantity }}"></td>
+        <td><input type="number" step="any" name="pos_price" value="{{ pos.average_price if pos.average_price is not none else '' }}"></td>
+      </tr>
+      {% endfor %}
+      {% for _ in range(3) %}
+      <tr>
+        <td><input type="text" name="pos_ticker" placeholder="NVDA"></td>
+        <td><input type="number" step="any" name="pos_quantity"></td>
+        <td><input type="number" step="any" name="pos_price"></td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  <div class="row">
+    <button type="button" class="outline secondary" onclick="addRow()">행 추가</button>
+    <button type="submit">저장</button>
+    {% if portfolio is not none %}
+    <button type="submit" name="action" value="clear" class="outline contrast right"
+            onclick="return confirm('포트폴리오를 삭제할까요? 이후 실행은 포트폴리오 없이 진행됩니다.')">포트폴리오 삭제</button>
+    {% endif %}
+  </div>
+  <p class="muted small">티커를 비운 행은 저장하지 않습니다.</p>
+</form>
+
+<h2>JSON 가져오기·내보내기</h2>
+<p class="muted small">CLI의 <code>tradingagents --portfolio my_book.json</code>과 같은 형식입니다.</p>
+<div class="row">
+  <form method="post" action="/portfolio/import" enctype="multipart/form-data" class="row">
+    <input type="file" name="file" accept="application/json,.json" required>
+    <button type="submit" class="outline">가져오기</button>
+  </form>
+  {% if portfolio is not none %}<a href="/portfolio/export" role="button" class="outline secondary">내보내기</a>{% endif %}
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+  function addRow() {
+    const body = document.getElementById('positions');
+    const row = body.rows[body.rows.length - 1].cloneNode(true);
+    row.querySelectorAll('input').forEach((input) => { input.value = ''; });
+    body.appendChild(row);
+  }
+</script>
+{% endblock %}

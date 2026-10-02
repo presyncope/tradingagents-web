@@ -1,0 +1,15 @@
+<div class="model-pair">
+  {% for menu, label in [(deep, 'Deep-thinking 모델 (Research Manager, Portfolio Manager)'), (quick, 'Quick-thinking 모델 (분석가, 토론자, Trader)')] %}
+  <label>{{ label }}
+    {% if menu.options %}
+    <select name="{{ menu.mode }}_think_llm">
+      {% for option_label, value in menu.options %}
+      <option value="{{ value }}" {% if value == menu.selected %}selected{% endif %}>{{ option_label }}</option>
+      {% endfor %}
+    </select>
+    {% endif %}
+    <input type="text" name="{{ menu.mode }}_custom" value="{{ menu.custom }}"
+           placeholder="{% if menu.options %}목록에 없는 모델 ID (입력하면 위 선택 대신 사용){% else %}모델 ID (예: llama3.3){% endif %}">
+  </label>
+  {% endfor %}
+</div>

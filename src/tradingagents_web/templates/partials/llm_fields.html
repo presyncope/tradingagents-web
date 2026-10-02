@@ -1,0 +1,54 @@
+{# LLM choices shared by the analysis, backtest and settings forms. Needs: values, providers, deep, quick, languages, rounds, efforts. #}
+<fieldset>
+  <legend><b>LLM</b></legend>
+  <label>제공자
+    <select name="llm_provider" hx-get="/ui/models" hx-target="#model-selects" hx-swap="innerHTML" hx-trigger="change">
+      {% for label, key in providers %}
+      <option value="{{ key }}" {% if key == values.llm_provider %}selected{% endif %}>{{ label }}</option>
+      {% endfor %}
+    </select>
+  </label>
+  <div id="model-selects">
+    {% with provider=values.llm_provider %}{% include "partials/model_selects.html" %}{% endwith %}
+  </div>
+  <div class="model-pair">
+    <label>출력 언어
+      <select name="output_language">
+        {% for lang in languages %}
+        <option value="{{ lang }}" {% if lang == values.output_language %}selected{% endif %}>{{ lang }}</option>
+        {% endfor %}
+        {% if values.output_language and values.output_language not in languages %}
+        <option value="{{ values.output_language }}" selected>{{ values.output_language }}</option>
+        {% endif %}
+      </select>
+    </label>
+    <div class="model-pair">
+      <label>Bull/Bear 토론 라운드
+        <select name="max_debate_rounds">
+          {% for n in rounds %}<option value="{{ n }}" {% if n == values.max_debate_rounds %}selected{% endif %}>{{ n }}</option>{% endfor %}
+        </select>
+      </label>
+      <label>리스크 토론 라운드
+        <select name="max_risk_discuss_rounds">
+          {% for n in rounds %}<option value="{{ n }}" {% if n == values.max_risk_discuss_rounds %}selected{% endif %}>{{ n }}</option>{% endfor %}
+        </select>
+      </label>
+    </div>
+  </div>
+  <details>
+    <summary class="small">고급: endpoint와 추론 강도</summary>
+    <label>Endpoint URL <span class="muted small">(OpenAI-compatible, Ollama 원격 서버 등. 비우면 제공자 기본값)</span>
+      <input type="url" name="backend_url" value="{{ values.backend_url or '' }}" placeholder="http://localhost:8000/v1">
+    </label>
+    <div class="model-pair">
+      {% for key, levels in efforts.items() %}
+      <label>{{ {'openai_reasoning_effort': 'OpenAI reasoning effort', 'anthropic_effort': 'Anthropic effort', 'google_thinking_level': 'Gemini thinking level'}[key] }}
+        <select name="{{ key }}">
+          <option value="">기본값</option>
+          {% for level in levels %}<option value="{{ level }}" {% if values[key] == level %}selected{% endif %}>{{ level }}</option>{% endfor %}
+        </select>
+      </label>
+      {% endfor %}
+    </div>
+  </details>
+</fieldset>

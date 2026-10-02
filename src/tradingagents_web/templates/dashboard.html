@@ -1,0 +1,75 @@
+{% extends "base.html" %}
+{% block title %}대시보드{% endblock %}
+{% block content %}
+<div class="row">
+  <h1>대시보드</h1>
+  <a href="/runs/new" role="button" class="right">새 분석</a>
+</div>
+
+<h2>진행 중인 작업</h2>
+{% if active %}
+<table>
+  <thead><tr><th>#</th><th>종류</th><th>대상</th><th>상태</th><th>시작</th><th>경과</th></tr></thead>
+  <tbody>
+  {% for job in active %}
+    <tr>
+      <td><a href="{{ job_url(job) }}">{{ job.id }}</a></td>
+      <td>{{ job.kind | kind_label }}</td>
+      <td>{{ job.tickers | join(', ') }}{% if job.trade_date %} · {{ job.trade_date }}{% endif %}</td>
+      <td><span class="badge {{ job.status }}">{{ job.status | status_label }}</span></td>
+      <td>{{ job.started_at | when }}</td>
+      <td>{{ duration(job) }}</td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% else %}
+<p class="empty">실행 중이거나 대기 중인 작업이 없습니다.</p>
+{% endif %}
+
+{% if resumable %}
+<h2>재개할 수 있는 작업</h2>
+<table>
+  <thead><tr><th>#</th><th>종류</th><th>대상</th><th>상태</th><th>사유</th><th></th></tr></thead>
+  <tbody>
+  {% for job in resumable %}
+    <tr>
+      <td><a href="{{ job_url(job) }}">{{ job.id }}</a></td>
+      <td>{{ job.kind | kind_label }}</td>
+      <td>{{ job.tickers | join(', ') }}{% if job.trade_date %} · {{ job.trade_date }}{% endif %}</td>
+      <td><span class="badge {{ job.status }}">{{ job.status | status_label }}</span></td>
+      <td class="small muted">{{ (job.error or '') | truncate(80) }}</td>
+      <td><form method="post" action="/runs/{{ job.id }}/resume" class="inline"><button class="outline secondary">재개</button></form></td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% endif %}
+
+<h2>최근 완료된 분석</h2>
+{% if recent %}
+<table>
+  <thead><tr><th>#</th><th>티커</th><th>분석일</th><th>등급</th><th>모델</th><th>완료</th></tr></thead>
+  <tbody>
+  {% for job in recent %}
+    <tr>
+      <td><a href="/runs/{{ job.id }}">{{ job.id }}</a></td>
+      <td>{{ job.ticker }}</td>
+      <td>{{ job.trade_date }}</td>
+      <td><span class="rating {{ job.rating | rating_class }}">{{ job.rating }}</span></td>
+      <td class="small">{{ job.request.llm_provider }} · {{ job.request.deep_think_llm }}</td>
+      <td class="small">{{ job.finished_at | when }}</td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% else %}
+<p class="empty">아직 완료된 분석이 없습니다.</p>
+{% endif %}
+
+<h2>메모리 로그</h2>
+<p>결과를 기다리는 결정 <b>{{ pending_count }}</b>건 · <a href="/memory?pending=1">메모리 로그 보기</a></p>
+{% endblock %}
+{% block scripts %}
+{% if active %}<script>setTimeout(() => location.reload(), 5000);</script>{% endif %}
+{% endblock %}

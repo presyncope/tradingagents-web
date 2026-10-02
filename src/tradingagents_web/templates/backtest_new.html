@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+{% block title %}새 백테스트{% endblock %}
+{% block content %}
+<h1>새 백테스트</h1>
+{% if error %}<p class="error">{{ error }}</p>{% endif %}
+<form method="post" action="/backtests" id="backtest-form">
+  <label>티커 <span class="muted small">(쉼표나 공백으로 구분)</span>
+    <input type="text" name="tickers" value="{{ form.tickers or '' }}" placeholder="NVDA, AAPL" required>
+  </label>
+  <div class="model-pair">
+    <label>시작일 <input type="date" name="start" value="{{ form.start or '' }}" required></label>
+    <label>종료일 <input type="date" name="end" value="{{ form.end or '' }}" required></label>
+  </div>
+  <label>간격 (일)
+    <input type="number" name="every_n_days" min="1" max="365" value="{{ form.every_n_days or 7 }}" required>
+  </label>
+  <p id="cell-estimate" class="muted small"></p>
+
+  <fieldset class="analysts">
+    <legend><b>분석가</b></legend>
+    {% for key, label in analyst_choices %}
+    <label><input type="checkbox" name="analysts" value="{{ key }}" {% if key in values.analysts %}checked{% endif %}> {{ label }}</label>
+    {% endfor %}
+  </fieldset>
+
+  {% include "partials/llm_fields.html" %}
+
+  <label>
+    <input type="checkbox" name="use_portfolio" {% if not has_portfolio %}disabled{% endif %}>
+    내 포트폴리오를 반영 {% if not has_portfolio %}<span class="muted small">(저장된 포트폴리오 없음)</span>{% endif %}
+  </label>
+  <button type="submit">백테스트 시작</button>
+  <p class="muted small">칸 하나가 분석 한 번입니다. 한 번에 최대 {{ max_cells }}칸까지 실행할 수 있습니다.</p>
+</form>
+{% endblock %}
+{% block scripts %}
+<script>
+  // The cells iter_grid makes: every N calendar days from start to end (and not past today).
+  const form = document.getElementById('backtest-form');
+  const out = document.getElementById('cell-estimate');
+  function estimate() {
+    const tickers = form.tickers.value.split(/[\s,]+/).filter(Boolean).length;
+    const start = new Date(form.start.value), end = new Date(form.end.value);
+    const step = parseInt(form.every_n_days.value || '1', 10);
+    if (!tickers || isNaN(start) || isNaN(end) || end < start || !step) { out.textContent = ''; return; }
+    const last = Math.min(end, new Date(new Date().toISOString().slice(0, 10)));
+    let dates = 0;
+    for (let d = new Date(start); d <= last; d.setDate(d.getDate() + step)) dates++;
+    const cells = tickers * dates;
+    out.textContent = `약 ${tickers}개 티커 × ${dates}개 날짜 = ${cells}칸` + (cells > {{ max_cells }} ? ' (한도 초과)' : '');
+  }
+  form.addEventListener('input', estimate);
+  estimate();
+</script>
+{% endblock %}

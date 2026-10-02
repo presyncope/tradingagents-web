@@ -1,0 +1,10 @@
+{% set labels = {'message': {'agent': '에이전트', 'data': '데이터', 'user': '입력', 'system': '시스템'}.get(item.role, '메시지'), 'tool_call': '도구 호출', 'log': '시스템', 'error': '오류', 'cancelled': '취소'} %}
+<div class="item {{ item.type }} {{ item.role or '' }}">
+  <span class="kind">{{ labels.get(item.type, item.type) }}</span>
+  <span class="muted small">{{ item.ts | when }}</span>
+  {% if item.type == 'tool_call' %}
+  <div class="text"><code>{{ item.name }}</code> {{ item.args }}</div>
+  {% else %}
+  <div class="text">{{ item.text or item.message }}</div>
+  {% endif %}
+</div>

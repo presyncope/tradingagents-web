@@ -1,0 +1,11 @@
+{% for team, members in teams %}
+<div class="agents">
+  <h4>{{ team }}</h4>
+  <ul>
+    {% for name in members %}
+    {% set state = agents.get(name, 'pending') %}
+    <li><span>{{ name }}</span><span class="badge {{ state }}">{{ state | agent_label }}</span></li>
+    {% endfor %}
+  </ul>
+</div>
+{% endfor %}

@@ -1,0 +1,7 @@
+{% extends "base.html" %}
+{% block title %}오류{% endblock %}
+{% block content %}
+<h1>요청을 처리할 수 없습니다</h1>
+<p class="error">{{ message }}</p>
+<p><a href="javascript:history.back()">돌아가기</a> · <a href="/">대시보드</a></p>
+{% endblock %}

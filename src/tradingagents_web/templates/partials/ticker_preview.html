@@ -1,0 +1,8 @@
+{% if error %}
+<small class="error">{{ error }}</small>
+{% else %}
+<small class="muted">
+  분석할 심볼: <b>{{ symbol }}</b>{% if symbol != raw %} ({{ raw }}에서 변환){% endif %}
+  · {{ '암호화폐: Fundamentals 분석가는 제외됩니다' if asset_type == 'crypto' else '주식' }}
+</small>
+{% endif %}

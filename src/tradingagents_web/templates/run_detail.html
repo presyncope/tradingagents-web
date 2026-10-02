@@ -1,0 +1,80 @@
+{% extends "base.html" %}
+{% block title %}{{ job.ticker }} {{ job.trade_date }}{% endblock %}
+{% block content %}
+{% set req = job.request %}
+{% set live = job.status in ('queued', 'running') %}
+<div class="row">
+  <h1>{{ job.ticker }} · {{ job.trade_date }}</h1>
+  <span class="badge {{ job.status }}">{{ job.status | status_label }}</span>
+  {% if job.rating %}<span class="rating rating-card {{ job.rating | rating_class }}">{{ job.rating }}</span>{% endif %}
+  <div class="right row">
+    {% if live %}
+    <form method="post" action="/runs/{{ job.id }}/cancel" class="inline"><button class="secondary outline">취소</button></form>
+    {% endif %}
+    {% if job.resumable %}
+    <form method="post" action="/runs/{{ job.id }}/resume" class="inline"><button>체크포인트에서 재개</button></form>
+    {% endif %}
+    {% if job.report_dir %}<a href="/runs/{{ job.id }}/report.md" role="button" class="outline">리포트 다운로드</a>{% endif %}
+    {% if not live %}<a href="/runs/new?source={{ job.id }}" role="button" class="outline secondary">같은 설정으로 다시 실행</a>{% endif %}
+  </div>
+</div>
+<p class="muted small">
+  #{{ job.id }} · {{ req.asset_type }} · {{ req.llm_provider }} ({{ req.deep_think_llm }} / {{ req.quick_think_llm }})
+  · 토론 {{ req.max_debate_rounds }} · 리스크 {{ req.max_risk_discuss_rounds }} · {{ req.output_language }}
+  · 포트폴리오 {{ '반영' if req.portfolio else '없음' }} · 체크포인트 {{ '켬' if req.checkpoint else '끔' }}
+  {% if job.resumed_from %} · <a href="/runs/{{ job.resumed_from }}">#{{ job.resumed_from }}</a>에서 재개{% endif %}
+  {% if job.started_at %} · 시작 {{ job.started_at | when }} · {{ duration(job) }}{% endif %}
+</p>
+{% if job.rating == 'REVIEW' %}
+<p class="error">최종 결정에서 등급을 읽지 못해 포지션이 아닌 검토 대상으로 기록되었습니다. 다시 실행하거나 아래 결정 본문을 직접 판단하세요.</p>
+{% endif %}
+{% if job.error %}<p class="error">{{ job.error }}</p>{% endif %}
+{% if job.status == 'queued' %}<p class="muted">같은 티커의 다른 작업이나 동시 실행 한도 때문에 대기 중입니다.</p>{% endif %}
+
+<div {% if live %}hx-ext="sse" sse-connect="/runs/{{ job.id }}/stream?after={{ view.last_seq }}" sse-close="end"{% endif %}>
+  <div id="stats" {% if live %}sse-swap="stats"{% endif %}>{% with stats=view.stats or (job.result or {}).get('stats') or {} %}{% include "partials/stats.html" %}{% endwith %}</div>
+  <div class="run-layout">
+    <aside>
+      <div id="agents" {% if live %}sse-swap="status"{% endif %}>{% with agents=view.agents %}{% include "partials/agents.html" %}{% endwith %}</div>
+    </aside>
+    <section>
+      <h2>리포트</h2>
+      {% for key, title in sections %}
+        {% set content = section_content.get(key) %}
+        {% if content or live %}
+        <details class="section" {% if key == 'final_trade_decision' or (live and content) %}open{% endif %}>
+          <summary>{{ title }}</summary>
+          <div id="section-{{ key }}" class="report" {% if live %}sse-swap="section-{{ key }}"{% endif %}>
+            {% with content=content %}{% include "partials/section_body.html" %}{% endwith %}
+          </div>
+        </details>
+        {% endif %}
+      {% endfor %}
+
+      <h2>진행 기록</h2>
+      <div class="feed" id="feed" {% if live %}sse-swap="feed" hx-swap="afterbegin"{% endif %}>
+        {% for item in feed %}{% include "partials/feed_item.html" %}{% endfor %}
+      </div>
+    </section>
+  </div>
+</div>
+
+{% if job.settings %}
+<details>
+  <summary class="small">실행 설정 (run_settings)</summary>
+  <pre class="small">{{ job.settings | tojson(indent=2) }}</pre>
+</details>
+{% endif %}
+{% endblock %}
+{% block scripts %}
+{% if job.status in ('queued', 'running') %}
+<script>
+  // sse-close="end" closes the stream on the server's last event and fires htmx:sseClose
+  // with type "message"; the finished page (rating, download) then comes from a reload.
+  document.body.addEventListener('htmx:sseClose', (e) => {
+    if (e.detail.type === 'message') setTimeout(() => location.reload(), 300);
+  });
+  {% if job.status == 'queued' %}setTimeout(() => location.reload(), 3000);{% endif %}
+</script>
+{% endif %}
+{% endblock %}

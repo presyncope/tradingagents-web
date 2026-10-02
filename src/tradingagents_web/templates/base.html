@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}TradingAgents{% endblock %} · TradingAgents Web</title>
+  <link rel="stylesheet" href="/static/pico.min.css">
+  <link rel="stylesheet" href="/static/app.css">
+  <script src="/static/htmx.min.js"></script>
+  <script src="/static/htmx-ext-sse.js"></script>
+</head>
+<body>
+  <header class="container">
+    {% set path = request.url.path %}
+    <nav>
+      <ul><li><a href="/" class="brand contrast">TradingAgents</a></li></ul>
+      <ul>
+        <li><a href="/runs/new" {% if path == '/runs/new' %}class="active"{% endif %}>새 분석</a></li>
+        <li><a href="/runs" {% if path == '/runs' %}class="active"{% endif %}>실행 이력</a></li>
+        <li><a href="/backtests" {% if path.startswith('/backtests') %}class="active"{% endif %}>백테스트</a></li>
+        <li><a href="/portfolio" {% if path == '/portfolio' %}class="active"{% endif %}>포트폴리오</a></li>
+        <li><a href="/memory" {% if path == '/memory' %}class="active"{% endif %}>메모리</a></li>
+        <li><a href="/settings" {% if path == '/settings' %}class="active"{% endif %}>설정</a></li>
+      </ul>
+    </nav>
+  </header>
+  <main class="container">
+    {% block content %}{% endblock %}
+  </main>
+  <footer class="container disclaimer">
+    TradingAgents는 연구용 프레임워크입니다. 결과는 LLM 샘플링과 실시간 데이터에 따라 실행마다 달라질 수 있으며, 투자·매매 조언이 아닙니다.
+  </footer>
+  {% block scripts %}{% endblock %}
+</body>
+</html>
