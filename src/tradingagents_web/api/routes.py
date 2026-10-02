@@ -4,18 +4,19 @@ from __future__ import annotations
 
 import json
 
-from fastapi import APIRouter, Depends, Request, UploadFile
+from fastapi import APIRouter, Depends, Query, Request, UploadFile
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from sse_starlette import EventSourceResponse, ServerSentEvent
 
-from tradingagents_web import services
+from tradingagents_web import cli_import, clock, schedules, services
 from tradingagents_web.config import (
     ANALYST_LABELS,
     ANALYST_ORDER,
     AnalysisRequest,
     BacktestRequest,
     RunDefaults,
+    ScheduleRequest,
     detect_asset_type,
     model_options,
     normalize_ticker,
@@ -66,6 +67,19 @@ def list_runs(store: Store = Depends(get_store), ticker: str | None = None, stat
     jobs = store.list_jobs(kind="analysis", ticker=ticker.upper() if ticker else None, status=status,
                            rating=rating, limit=min(limit, 200), offset=offset)
     return [public(j) for j in jobs]
+
+
+@router.get("/runs/compare")
+def compare_runs(ids: list[int] = Query(...), store: Store = Depends(get_store)):
+    """Two to four completed analyses: settings rows (``differs`` marks a difference) and sections."""
+    result = services.compare_runs(store, ids)
+    return {**result, "runs": [public(r) for r in result["runs"]]}
+
+
+@router.post("/runs/import")
+def import_cli_reports(store: Store = Depends(get_store)):
+    """Register report trees the CLI saved under results_dir/reports that are not known yet."""
+    return cli_import.import_reports(store)
 
 
 @router.get("/runs/{job_id}")
@@ -263,3 +277,44 @@ def put_defaults(body: RunDefaults, store: Store = Depends(get_store)):
 @router.get("/settings/keys")
 def get_keys():
     return services.key_status()
+
+
+# --- schedules ---------------------------------------------------------------------------
+
+@router.get("/schedules")
+def list_schedules(store: Store = Depends(get_store)):
+    return store.list_schedules()
+
+
+@router.post("/schedules", response_model=Created, status_code=201)
+def create_schedule(body: ScheduleRequest, store: Store = Depends(get_store)):
+    return {"id": schedules.create(store, body)}
+
+
+@router.get("/schedules/{schedule_id}")
+def get_schedule(schedule_id: int, store: Store = Depends(get_store)):
+    schedule = schedules.require(store, schedule_id)
+    jobs = [public(j) for j in store.list_jobs(schedule_id=schedule_id, limit=50)]
+    return {**schedule, "jobs": jobs}
+
+
+@router.put("/schedules/{schedule_id}")
+def put_schedule(schedule_id: int, body: ScheduleRequest, store: Store = Depends(get_store)):
+    schedules.update(store, schedule_id, body)
+    return store.get_schedule(schedule_id)
+
+
+@router.delete("/schedules/{schedule_id}", status_code=204)
+def delete_schedule(schedule_id: int, store: Store = Depends(get_store)):
+    schedules.require(store, schedule_id)
+    store.delete_schedule(schedule_id)
+
+
+@router.post("/schedules/{schedule_id}/run")
+def run_schedule(schedule_id: int, store: Store = Depends(get_store),
+                 manager: JobManager | None = Depends(optional_manager)):
+    """Fire now, for today's date; the regular next run is unchanged."""
+    jobs, errors = schedules.fire(store, schedules.require(store, schedule_id), clock.today().isoformat())
+    if manager:
+        manager.wake()
+    return {"jobs": jobs, "errors": errors}

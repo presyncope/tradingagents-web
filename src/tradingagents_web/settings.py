@@ -33,3 +33,5 @@ class AppSettings:
         if h.strip()])
     # Seconds between scheduler passes.
     poll_interval: float = 1.0
+    # Register reports the CLI saved under results_dir/reports when the server starts.
+    import_on_start: bool = True

@@ -18,13 +18,33 @@
     {% if not live %}<a href="/runs/new?source={{ job.id }}" role="button" class="outline secondary">같은 설정으로 다시 실행</a>{% endif %}
   </div>
 </div>
+{% if job.source == 'cli' %}
+<p class="muted small">
+  #{{ job.id }} · CLI에서 가져온 리포트 · {{ req.llm_provider }} ({{ req.deep_think_llm }} / {{ req.quick_think_llm }})
+  · 토론 {{ req.max_debate_rounds }} · 리스크 {{ req.max_risk_discuss_rounds }} · 생성 {{ job.created_at | when }}
+  <br>위치: <code>{{ job.report_dir }}</code>
+</p>
+{% else %}
 <p class="muted small">
   #{{ job.id }} · {{ req.asset_type }} · {{ req.llm_provider }} ({{ req.deep_think_llm }} / {{ req.quick_think_llm }})
   · 토론 {{ req.max_debate_rounds }} · 리스크 {{ req.max_risk_discuss_rounds }} · {{ req.output_language }}
   · 포트폴리오 {{ '반영' if req.portfolio else '없음' }} · 체크포인트 {{ '켬' if req.checkpoint else '끔' }}
+  {% if job.schedule_id %} · <a href="/schedules/{{ job.schedule_id }}">예약 실행</a>{% endif %}
   {% if job.resumed_from %} · <a href="/runs/{{ job.resumed_from }}">#{{ job.resumed_from }}</a>에서 재개{% endif %}
   {% if job.started_at %} · 시작 {{ job.started_at | when }} · {{ duration(job) }}{% endif %}
 </p>
+{% endif %}
+{% if others %}
+<form method="get" action="/runs/compare" class="row">
+  <input type="hidden" name="ids" value="{{ job.id }}">
+  <select name="ids" style="max-width: 24rem" aria-label="비교할 실행">
+    {% for other in others %}
+    <option value="{{ other.id }}">#{{ other.id }} · {{ other.trade_date or '-' }} · {{ other.rating }} · {{ other.request.deep_think_llm }}</option>
+    {% endfor %}
+  </select>
+  <button type="submit" class="outline secondary">이 실행과 비교</button>
+</form>
+{% endif %}
 {% if job.rating == 'REVIEW' %}
 <p class="error">최종 결정에서 등급을 읽지 못해 포지션이 아닌 검토 대상으로 기록되었습니다. 다시 실행하거나 아래 결정 본문을 직접 판단하세요.</p>
 {% endif %}
@@ -51,10 +71,12 @@
         {% endif %}
       {% endfor %}
 
+      {% if live or feed %}
       <h2>진행 기록</h2>
       <div class="feed" id="feed" {% if live %}sse-swap="feed" hx-swap="afterbegin"{% endif %}>
         {% for item in feed %}{% include "partials/feed_item.html" %}{% endfor %}
       </div>
+      {% endif %}
     </section>
   </div>
 </div>

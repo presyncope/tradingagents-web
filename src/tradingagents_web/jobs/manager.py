@@ -24,6 +24,7 @@ import threading
 from collections.abc import Callable
 from pathlib import Path
 
+from tradingagents_web import schedules
 from tradingagents_web.store.db import Store, now
 from tradingagents_web.worker.entry import main as worker_main
 
@@ -101,7 +102,17 @@ class JobManager:
     def tick(self) -> None:
         with self._lock:
             self._reap()
+            self._fire_schedules()
             self._schedule()
+
+    def _fire_schedules(self) -> None:
+        try:
+            queued = schedules.fire_due(self.store)
+        except Exception:
+            logger.exception("Firing schedules failed")
+            return
+        if queued:
+            logger.info("Schedules queued jobs %s", queued)
 
     def _reap(self) -> None:
         for job_id, proc in list(self._procs.items()):

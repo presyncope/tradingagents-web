@@ -6,18 +6,19 @@ import hmac
 import json
 from collections import defaultdict
 
-from fastapi import APIRouter, Depends, Request, UploadFile
+from fastapi import APIRouter, Depends, Query, Request, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse, Response
 from sse_starlette import EventSourceResponse, ServerSentEvent
 from starlette.concurrency import run_in_threadpool
 from tradingagents.default_config import DEFAULT_CONFIG
 
-from tradingagents_web import services
+from tradingagents_web import cli_import, clock, schedules, services
 from tradingagents_web.config import (
     ANALYST_ORDER,
     AnalysisRequest,
     BacktestRequest,
     RunDefaults,
+    ScheduleRequest,
     detect_asset_type,
     normalize_ticker,
 )
@@ -56,8 +57,11 @@ def dashboard(request: Request, store: Store = Depends(get_store)):
     recent = store.list_jobs(kind="analysis", status="completed", limit=10)
     resumable = [j for j in store.list_jobs(status=["failed", "cancelled"], limit=50) if j["resumable"]]
     pending = services.memory_entries(pending=True)
+    upcoming = sorted((s for s in store.list_schedules() if s["enabled"] and s["next_run_at"]),
+                      key=lambda s: s["next_run_at"])[:5]
     return page(request, "dashboard.html", active=active, recent=recent, resumable=resumable,
-                pending_count=len(pending), job_url=job_url)
+                pending_count=len(pending), job_url=job_url, upcoming=upcoming,
+                describe=schedules.describe)
 
 
 # --- analysis ---------------------------------------------------------------
@@ -79,7 +83,7 @@ def run_new(request: Request, store: Store = Depends(get_store), source: int | N
     if source:
         job = services.require_job(store, source, "analysis")
         previous = job["request"]
-        ticker, trade_date = previous["ticker"], previous["trade_date"]
+        ticker, trade_date = previous["ticker"], previous.get("trade_date")
     return _run_form(request, store, forms.form_values(services.get_defaults(store), previous),
                      ticker=ticker, trade_date=trade_date)
 
@@ -111,31 +115,53 @@ async def run_create(request: Request, store: Store = Depends(get_store),
 
 @router.get("/runs", response_class=HTMLResponse)
 def run_list(request: Request, store: Store = Depends(get_store), ticker: str = "",
-             status: str = "", rating: str = "", offset: int = 0):
+             status: str = "", rating: str = "", offset: int = 0, imported: int | None = None,
+             skipped: int = 0):
     jobs = store.list_jobs(kind="analysis", ticker=ticker.strip().upper() or None,
                            status=status or None, rating=rating or None, limit=50, offset=offset)
     timeline = []
     if ticker.strip():
-        timeline = sorted((j for j in jobs if j["status"] == "completed"), key=lambda j: j["trade_date"])
+        timeline = sorted((j for j in jobs if j["status"] == "completed"),
+                          key=lambda j: j["trade_date"] or "")
     return page(request, "run_list.html", jobs=jobs, ticker=ticker, status=status, rating=rating,
-                offset=offset, timeline=timeline)
+                offset=offset, timeline=timeline, imported=imported, skipped=skipped,
+                report_root=str(cli_import.report_root()))
+
+
+@router.post("/runs/import")
+def run_import(store: Store = Depends(get_store)):
+    found = cli_import.import_reports(store)
+    return see_other(f"/runs?imported={len(found['imported'])}&skipped={found['skipped']}")
+
+
+@router.get("/runs/compare", response_class=HTMLResponse)
+def run_compare(request: Request, ids: list[int] = Query(default=[]),
+                store: Store = Depends(get_store)):
+    return page(request, "run_compare.html", **services.compare_runs(store, ids))
 
 
 @router.get("/runs/{job_id}", response_class=HTMLResponse)
 def run_detail(request: Request, job_id: int, store: Store = Depends(get_store)):
     job = services.require_job(store, job_id, "analysis")
-    analysts = job["request"]["analysts"]
+    analysts = job["request"].get("analysts") or []
     view = RunView.from_events(analysts, store.events(job_id))
     sections = (job.get("result") or {}).get("sections") or view.sections
+    others = []
+    if job["status"] == "completed":
+        # Every agent finished; an imported report has no events to say so.
+        view.agents = dict.fromkeys(view.agents, "completed")
+        others = [j for j in store.list_jobs(kind="analysis", status="completed", ticker=job["ticker"],
+                                             limit=30) if j["id"] != job_id]
     return page(request, "run_detail.html", job=job, view=view, teams=teams(analysts),
-                sections=SECTIONS, section_content=sections, feed=list(reversed(view.feed)))
+                sections=SECTIONS, section_content=sections, feed=list(reversed(view.feed)),
+                others=others)
 
 
 @router.get("/runs/{job_id}/stream")
 async def run_stream(request: Request, job_id: int, after: int = 0,
                      store: Store = Depends(get_store)):
     job = services.require_job(store, job_id, "analysis")
-    analysts = job["request"]["analysts"]
+    analysts = job["request"].get("analysts") or []
     templates = request.app.state.templates
     db_path = request.app.state.settings.db_path
 
@@ -303,6 +329,109 @@ def backtest_progress(request: Request, job_id: int, store: Store = Depends(get_
     if job["status"] not in ACTIVE:
         response.headers["HX-Refresh"] = "true"
     return response
+
+
+# --- schedules --------------------------------------------------------------------
+
+def _schedule_fields(form) -> dict:
+    return {
+        **forms.llm_fields(form),
+        "name": forms._text(form, "name") or "",
+        "tickers": [t for t in (forms._text(form, "tickers") or "").replace(",", " ").split() if t],
+        "days": [int(d) for d in form.getlist("days") if str(d).isdigit()],
+        "time": forms._text(form, "time") or "",
+        "enabled": forms.checked(form, "enabled"),
+        "analysts": forms.analysts(form),
+        "use_portfolio": forms.checked(form, "use_portfolio"),
+        "checkpoint": forms.checked(form, "checkpoint"),
+    }
+
+
+def _schedule_form(request, store, schedule: dict | None, error=None, status_code=200, echo=None):
+    previous = (echo or schedule or {}).get("request") if (echo or schedule) else None
+    values = forms.form_values(services.get_defaults(store), previous)
+    source = echo or schedule or {"name": "", "tickers": [], "days": [0, 1, 2, 3, 4], "time": "17:00",
+                                  "enabled": True}
+    jobs = store.list_jobs(schedule_id=schedule["id"], limit=20) if schedule else []
+    return page(request, "schedule_form.html", status_code=status_code, schedule=schedule, source=source,
+                values=values, error=error, jobs=jobs, weekdays=schedules.WEEKDAYS,
+                has_portfolio=services.get_portfolio(store) is not None, job_url=job_url,
+                tz=str(schedules.zone()),
+                deep=forms.model_menu(values["llm_provider"], "deep", values["deep_think_llm"]),
+                quick=forms.model_menu(values["llm_provider"], "quick", values["quick_think_llm"]),
+                **forms.choices())
+
+
+def _echo(fields: dict) -> dict:
+    """A rejected form shown again as the user filled it."""
+    run = {k: v for k, v in fields.items() if k in schedules.RUN_FIELDS and v is not None}
+    return {**{k: fields[k] for k in ("name", "tickers", "days", "time", "enabled")}, "request": run}
+
+
+@router.get("/schedules", response_class=HTMLResponse)
+def schedule_list(request: Request, store: Store = Depends(get_store)):
+    rows = []
+    for schedule in store.list_schedules():
+        rows.append({**schedule, "when": schedules.describe(schedule),
+                     "recent": store.list_jobs(schedule_id=schedule["id"], limit=5)})
+    return page(request, "schedule_list.html", schedules=rows, tz=str(schedules.zone()), job_url=job_url)
+
+
+@router.get("/schedules/new", response_class=HTMLResponse)
+def schedule_new(request: Request, store: Store = Depends(get_store)):
+    return _schedule_form(request, store, None)
+
+
+@router.post("/schedules")
+async def schedule_create(request: Request, store: Store = Depends(get_store)):
+    fields = _schedule_fields(await request.form())
+    try:
+        schedule_id = schedules.create(store, ScheduleRequest(**fields))
+    except (UserError, ValueError) as exc:
+        return _schedule_form(request, store, None, error=str(exc), status_code=400, echo=_echo(fields))
+    return see_other(f"/schedules/{schedule_id}")
+
+
+@router.get("/schedules/{schedule_id}", response_class=HTMLResponse)
+def schedule_detail(request: Request, schedule_id: int, store: Store = Depends(get_store)):
+    return _schedule_form(request, store, schedules.require(store, schedule_id))
+
+
+@router.post("/schedules/{schedule_id}")
+async def schedule_update(request: Request, schedule_id: int, store: Store = Depends(get_store)):
+    schedule = schedules.require(store, schedule_id)
+    fields = _schedule_fields(await request.form())
+    try:
+        schedules.update(store, schedule_id, ScheduleRequest(**fields))
+    except (UserError, ValueError) as exc:
+        return _schedule_form(request, store, schedule, error=str(exc), status_code=400, echo=_echo(fields))
+    return see_other(f"/schedules/{schedule_id}?saved=1")
+
+
+@router.post("/schedules/{schedule_id}/toggle")
+def schedule_toggle(schedule_id: int, store: Store = Depends(get_store)):
+    schedule = schedules.require(store, schedule_id)
+    schedules.set_enabled(store, schedule_id, not schedule["enabled"])
+    return see_other("/schedules")
+
+
+@router.post("/schedules/{schedule_id}/run")
+def schedule_run(schedule_id: int, store: Store = Depends(get_store),
+                 manager: JobManager | None = Depends(optional_manager)):
+    schedule = schedules.require(store, schedule_id)
+    jobs, errors = schedules.fire(store, schedule, clock.today().isoformat())
+    if manager:
+        manager.wake()
+    if not jobs:
+        raise UserError("실행된 작업이 없습니다: " + "; ".join(errors))
+    return see_other(f"/runs/{jobs[0]}" if len(jobs) == 1 else f"/schedules/{schedule_id}")
+
+
+@router.post("/schedules/{schedule_id}/delete")
+def schedule_delete(schedule_id: int, store: Store = Depends(get_store)):
+    schedules.require(store, schedule_id)
+    store.delete_schedule(schedule_id)
+    return see_other("/schedules")
 
 
 # --- portfolio ------------------------------------------------------------------

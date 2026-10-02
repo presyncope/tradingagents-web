@@ -67,6 +67,19 @@
 <p class="empty">아직 완료된 분석이 없습니다.</p>
 {% endif %}
 
+{% if upcoming %}
+<h2>다가오는 예약</h2>
+<table>
+  <thead><tr><th>이름</th><th>티커</th><th>일정</th><th>다음 실행</th></tr></thead>
+  <tbody>
+  {% for s in upcoming %}
+    <tr><td><a href="/schedules/{{ s.id }}">{{ s.name }}</a></td><td>{{ s.tickers | join(', ') }}</td>
+        <td>{{ describe(s) }}</td><td>{{ s.next_run_at | when }}</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% endif %}
+
 <h2>메모리 로그</h2>
 <p>결과를 기다리는 결정 <b>{{ pending_count }}</b>건 · <a href="/memory?pending=1">메모리 로그 보기</a></p>
 {% endblock %}

@@ -18,6 +18,7 @@
         <li><a href="/runs/new" {% if path == '/runs/new' %}class="active"{% endif %}>새 분석</a></li>
         <li><a href="/runs" {% if path == '/runs' %}class="active"{% endif %}>실행 이력</a></li>
         <li><a href="/backtests" {% if path.startswith('/backtests') %}class="active"{% endif %}>백테스트</a></li>
+        <li><a href="/schedules" {% if path.startswith('/schedules') %}class="active"{% endif %}>예약</a></li>
         <li><a href="/portfolio" {% if path == '/portfolio' %}class="active"{% endif %}>포트폴리오</a></li>
         <li><a href="/memory" {% if path == '/memory' %}class="active"{% endif %}>메모리</a></li>
         <li><a href="/settings" {% if path == '/settings' %}class="active"{% endif %}>설정</a></li>

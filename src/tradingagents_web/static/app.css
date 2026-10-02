@@ -73,3 +73,14 @@ fieldset.analysts label { display: inline-flex; margin-right: 1rem; }
 @media (max-width: 700px) { .model-pair { grid-template-columns: 1fr; } }
 .positions input { margin-bottom: 0.25rem; }
 pre.summary { white-space: pre-wrap; font-size: 0.85em; }
+
+table.compare tr.differs th, table.compare tr.differs td { background: rgba(183, 121, 31, 0.12); }
+table.compare th { white-space: nowrap; }
+.compare-columns { display: grid; gap: 1rem; }
+.compare-column { max-height: 36rem; overflow-y: auto; border-left: 2px solid var(--pico-muted-border-color);
+                  padding-left: 0.75rem; font-size: 0.9em; }
+
+/* Controls in a row keep their own width rather than Pico's full width. */
+.row > input, .row > select, .row > button, .row > form > button, .row > [role=button] { width: auto; }
+#compare-button { width: auto; }
+td.date { white-space: nowrap; }

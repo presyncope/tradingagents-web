@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+{% block title %}예약 실행{% endblock %}
+{% block content %}
+<div class="row">
+  <h1>예약 실행</h1>
+  <a href="/schedules/new" role="button" class="right">새 예약</a>
+</div>
+<p class="muted small">
+  정한 요일과 시각({{ tz }} 기준)에 티커마다 그날 날짜로 분석을 실행합니다. 서버가 꺼져 있던 동안 지난 예약은
+  다시 켜질 때 한 번만 실행됩니다. 실행할 때마다 LLM 비용이 듭니다.
+</p>
+{% if schedules %}
+<table>
+  <thead><tr><th>이름</th><th>티커</th><th>일정</th><th>다음 실행</th><th>최근 실행</th><th></th></tr></thead>
+  <tbody>
+  {% for s in schedules %}
+    <tr>
+      <td><a href="/schedules/{{ s.id }}">{{ s.name }}</a>{% if not s.enabled %} <span class="badge cancelled">꺼짐</span>{% endif %}</td>
+      <td>{{ s.tickers | join(', ') }}</td>
+      <td>{{ s.when }}</td>
+      <td class="small">{{ s.next_run_at | when if s.enabled else '-' }}</td>
+      <td class="small">
+        {{ s.last_run_at | when }}
+        {% for job in s.recent %}<a href="{{ job_url(job) }}" title="{{ job.ticker }} {{ job.trade_date }}"><span class="badge {{ job.status }}">#{{ job.id }}</span></a> {% endfor %}
+        {% if s.last_error %}<br><span class="error small">{{ s.last_error }}</span>{% endif %}
+      </td>
+      <td class="row">
+        <form method="post" action="/schedules/{{ s.id }}/run" class="inline"><button class="outline">지금 실행</button></form>
+        <form method="post" action="/schedules/{{ s.id }}/toggle" class="inline"><button class="outline secondary">{{ '끄기' if s.enabled else '켜기' }}</button></form>
+      </td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% else %}
+<p class="empty">예약이 없습니다.</p>
+{% endif %}
+{% endblock %}

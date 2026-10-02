@@ -2365,6 +2365,7 @@ dependencies = [
     { name = "python-multipart" },
     { name = "sse-starlette" },
     { name = "tradingagents" },
+    { name = "tzdata" },
     { name = "uvicorn", extra = ["standard"] },
 ]
 
@@ -2385,6 +2386,7 @@ requires-dist = [
     { name = "python-multipart", specifier = ">=0.0.9" },
     { name = "sse-starlette", specifier = ">=2.1" },
     { name = "tradingagents", git = "https://github.com/TauricResearch/TradingAgents.git?tag=v0.5.2" },
+    { name = "tzdata", specifier = ">=2024.1" },
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.30" },
 ]
 

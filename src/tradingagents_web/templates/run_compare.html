@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+{% block title %}실행 비교{% endblock %}
+{% block content %}
+<h1>실행 비교</h1>
+{% if not same_ticker %}<p class="notice">티커가 서로 다른 실행입니다.</p>{% endif %}
+<p class="muted small">같은 입력이어도 LLM 샘플링과 실시간 데이터 때문에 결과가 달라질 수 있습니다. 설정이 다른 행은 강조됩니다.</p>
+
+<table class="compare">
+  <thead>
+    <tr><th></th>{% for run in runs %}<th><a href="/runs/{{ run.id }}">#{{ run.id }}</a></th>{% endfor %}</tr>
+  </thead>
+  <tbody>
+  {% for row in rows %}
+    <tr class="{{ 'differs' if row.differs else '' }}">
+      <th>{{ row.label }}</th>
+      {% for value in row['values'] %}
+      <td>{% if row.key == 'rating' %}<span class="rating {{ value | rating_class }}">{{ value }}</span>{% else %}{{ value }}{% endif %}</td>
+      {% endfor %}
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+
+<h2>리포트</h2>
+{% for section in sections %}
+<details class="section" {% if section.key == 'final_trade_decision' %}open{% endif %}>
+  <summary>{{ section.title }} {% if section.same %}<span class="muted small">(내용 같음)</span>{% endif %}</summary>
+  <div class="compare-columns" style="grid-template-columns: repeat({{ runs | length }}, minmax(0, 1fr))">
+    {% for content in section.contents %}
+    <div class="report compare-column">
+      <p class="muted small"><a href="/runs/{{ runs[loop.index0].id }}">#{{ runs[loop.index0].id }}</a></p>
+      {% with content=content %}{% include "partials/section_body.html" %}{% endwith %}
+    </div>
+    {% endfor %}
+  </div>
+</details>
+{% endfor %}
+{% endblock %}

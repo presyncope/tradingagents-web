@@ -17,6 +17,7 @@ from fastapi.templating import Jinja2Templates
 from markdown_it import MarkdownIt
 from markupsafe import Markup
 
+from tradingagents_web.clock import zone
 from tradingagents_web.progress import SECTION_TITLES
 
 _md = MarkdownIt("commonmark", {"html": False, "linkify": False}).enable("table")
@@ -36,7 +37,7 @@ def markdown(text: str | None) -> Markup:
 
 
 def when(value: str | None) -> str:
-    """An ISO timestamp as local time, minutes precision."""
+    """An ISO timestamp in the server's display zone (TRADINGAGENTS_WEB_TZ), minutes precision."""
     if not value:
         return ""
     try:
@@ -44,7 +45,7 @@ def when(value: str | None) -> str:
     except ValueError:
         return value
     if moment.tzinfo is not None:
-        moment = moment.astimezone()
+        moment = moment.astimezone(zone())
     return moment.strftime("%Y-%m-%d %H:%M")
 
 

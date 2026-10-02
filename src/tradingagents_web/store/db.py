@@ -32,12 +32,29 @@ CREATE TABLE IF NOT EXISTS jobs (
     progress_done INTEGER,
     progress_total INTEGER,
     pid           INTEGER,
+    source        TEXT NOT NULL DEFAULT 'web', -- web | cli (a report imported from the CLI) | schedule
+    schedule_id   INTEGER,
     created_at    TEXT NOT NULL,
     started_at    TEXT,
     finished_at   TEXT
 );
 CREATE INDEX IF NOT EXISTS jobs_status ON jobs (status);
 CREATE INDEX IF NOT EXISTS jobs_kind_ticker ON jobs (kind, ticker);
+
+CREATE TABLE IF NOT EXISTS schedules (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    name         TEXT NOT NULL,
+    tickers      TEXT NOT NULL,               -- JSON list
+    days         TEXT NOT NULL,               -- JSON list of weekdays, 0 = Monday
+    time         TEXT NOT NULL,               -- HH:MM in the server's time zone
+    request      TEXT NOT NULL,               -- JSON: the run choices, resolved when it fires
+    enabled      INTEGER NOT NULL DEFAULT 1,
+    next_run_at  TEXT,
+    last_run_at  TEXT,
+    last_jobs    TEXT,                        -- JSON list of job ids from the last firing
+    last_error   TEXT,
+    created_at   TEXT NOT NULL
+);
 
 CREATE TABLE IF NOT EXISTS job_events (
     job_id  INTEGER NOT NULL,
@@ -55,6 +72,12 @@ CREATE TABLE IF NOT EXISTS kv (
 """
 
 JSON_COLUMNS = ("tickers", "request", "settings", "result")
+SCHEDULE_JSON = ("tickers", "days", "request", "last_jobs")
+
+# Columns added after the first release, for databases created before them.
+MIGRATIONS = {
+    "jobs": [("source", "TEXT NOT NULL DEFAULT 'web'"), ("schedule_id", "INTEGER")],
+}
 ACTIVE = ("queued", "running")
 FINISHED = ("completed", "failed", "cancelled")
 
@@ -92,7 +115,17 @@ class Store:
         self.path = Path(path)
         self.conn = connect(self.path)
         if init:
+            self._migrate()
             self.conn.executescript(SCHEMA)
+
+    def _migrate(self) -> None:
+        for table, columns in MIGRATIONS.items():
+            existing = {r["name"] for r in self.conn.execute(f"PRAGMA table_info({table})")}
+            if not existing:
+                continue        # a new database: SCHEMA creates the table whole
+            for name, decl in columns:
+                if name not in existing:
+                    self.conn.execute(f"ALTER TABLE {table} ADD COLUMN {name} {decl}")
 
     def close(self) -> None:
         self.conn.close()
@@ -100,13 +133,20 @@ class Store:
     # --- jobs -------------------------------------------------------------
 
     def create_job(self, kind: str, request: dict, tickers: list[str], *, ticker: str | None = None,
-                   trade_date: str | None = None, resumed_from: int | None = None) -> int:
+                   trade_date: str | None = None, resumed_from: int | None = None,
+                   source: str = "web", schedule_id: int | None = None,
+                   status: str = "queued") -> int:
         cur = self.conn.execute(
             "INSERT INTO jobs (kind, status, ticker, trade_date, tickers, request, resumed_from,"
-            " created_at) VALUES (?, 'queued', ?, ?, ?, ?, ?, ?)",
-            (kind, ticker, trade_date, json.dumps(tickers), json.dumps(request), resumed_from, now()),
+            " source, schedule_id, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (kind, status, ticker, trade_date, json.dumps(tickers), json.dumps(request), resumed_from,
+             source, schedule_id, now()),
         )
         return int(cur.lastrowid)
+
+    def report_dirs(self) -> set[str]:
+        return {r["report_dir"] for r in self.conn.execute(
+            "SELECT report_dir FROM jobs WHERE report_dir IS NOT NULL")}
 
     def get_job(self, job_id: int) -> dict[str, Any] | None:
         return _row(self.conn.execute("SELECT * FROM jobs WHERE id = ?", (job_id,)).fetchone())
@@ -143,11 +183,18 @@ class Store:
 
     def list_jobs(self, *, kind: str | None = None, status: str | list[str] | None = None,
                   ticker: str | None = None, rating: str | None = None,
+                  schedule_id: int | None = None, ids: list[int] | None = None,
                   limit: int = 50, offset: int = 0) -> list[dict[str, Any]]:
         where, args = [], []
         if kind:
             where.append("kind = ?")
             args.append(kind)
+        if schedule_id is not None:
+            where.append("schedule_id = ?")
+            args.append(schedule_id)
+        if ids is not None:
+            where.append(f"id IN ({', '.join('?' for _ in ids) or 'NULL'})")
+            args.extend(ids)
         if status:
             statuses = [status] if isinstance(status, str) else list(status)
             where.append(f"status IN ({', '.join('?' for _ in statuses)})")
@@ -207,3 +254,53 @@ class Store:
             "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
             (key, json.dumps(value)),
         )
+
+    # --- schedules --------------------------------------------------------
+
+    @staticmethod
+    def _schedule(row: sqlite3.Row | None) -> dict[str, Any] | None:
+        if row is None:
+            return None
+        schedule = dict(row)
+        for key in SCHEDULE_JSON:
+            if schedule.get(key) is not None:
+                schedule[key] = json.loads(schedule[key])
+        schedule["enabled"] = bool(schedule["enabled"])
+        return schedule
+
+    def create_schedule(self, *, name: str, tickers: list[str], days: list[int], time: str,
+                        request: dict, enabled: bool, next_run_at: str | None) -> int:
+        cur = self.conn.execute(
+            "INSERT INTO schedules (name, tickers, days, time, request, enabled, next_run_at, created_at)"
+            " VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            (name, json.dumps(tickers), json.dumps(days), time, json.dumps(request), int(enabled),
+             next_run_at, now()),
+        )
+        return int(cur.lastrowid)
+
+    def update_schedule(self, schedule_id: int, **fields: Any) -> None:
+        if not fields:
+            return
+        for key in SCHEDULE_JSON:
+            if key in fields and fields[key] is not None:
+                fields[key] = json.dumps(fields[key])
+        if "enabled" in fields:
+            fields["enabled"] = int(bool(fields["enabled"]))
+        cols = ", ".join(f"{k} = ?" for k in fields)
+        self.conn.execute(f"UPDATE schedules SET {cols} WHERE id = ?", (*fields.values(), schedule_id))
+
+    def get_schedule(self, schedule_id: int) -> dict[str, Any] | None:
+        return self._schedule(self.conn.execute("SELECT * FROM schedules WHERE id = ?",
+                                                (schedule_id,)).fetchone())
+
+    def list_schedules(self) -> list[dict[str, Any]]:
+        return [self._schedule(r) for r in self.conn.execute("SELECT * FROM schedules ORDER BY id")]
+
+    def due_schedules(self, moment: str) -> list[dict[str, Any]]:
+        rows = self.conn.execute(
+            "SELECT * FROM schedules WHERE enabled = 1 AND next_run_at IS NOT NULL AND next_run_at <= ?"
+            " ORDER BY next_run_at", (moment,))
+        return [self._schedule(r) for r in rows]
+
+    def delete_schedule(self, schedule_id: int) -> None:
+        self.conn.execute("DELETE FROM schedules WHERE id = ?", (schedule_id,))

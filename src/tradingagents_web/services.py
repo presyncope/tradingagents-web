@@ -10,6 +10,7 @@ from __future__ import annotations
 import os
 from datetime import datetime
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from tradingagents.default_config import DEFAULT_CONFIG
 from tradingagents.llm_clients.api_key_env import get_api_key_env
@@ -27,8 +28,10 @@ from tradingagents_web.config import (
     resolve_backtest,
     resolve_llm,
 )
-from tradingagents_web.jobs.manager import JobManager
 from tradingagents_web.store.db import ACTIVE, Store
+
+if TYPE_CHECKING:   # the manager imports this module to fire schedules
+    from tradingagents_web.jobs.manager import JobManager
 
 
 class UserError(ValueError):
@@ -83,7 +86,8 @@ def _portfolio_for(store: Store, use: bool) -> dict | None:
 
 # --- jobs -----------------------------------------------------------------
 
-def submit_analysis(store: Store, manager: JobManager | None, request: AnalysisRequest) -> int:
+def submit_analysis(store: Store, manager: JobManager | None, request: AnalysisRequest, *,
+                    source: str = "web", schedule_id: int | None = None) -> int:
     try:
         resolved = resolve_analysis(request, get_defaults(store), _portfolio_for(store, request.use_portfolio))
     except ValueError as exc:
@@ -92,7 +96,8 @@ def submit_analysis(store: Store, manager: JobManager | None, request: AnalysisR
         if job["request"] == resolved:
             raise UserError(f"같은 분석이 이미 실행 중이거나 대기 중입니다 (#{job['id']})", status=409)
     job_id = store.create_job("analysis", resolved, [resolved["ticker"]],
-                              ticker=resolved["ticker"], trade_date=resolved["trade_date"])
+                              ticker=resolved["ticker"], trade_date=resolved["trade_date"],
+                              source=source, schedule_id=schedule_id)
     if manager:
         manager.wake()
     return job_id
@@ -184,6 +189,60 @@ def report_file(job: dict) -> Path:
     if not path.is_file():
         raise UserError("리포트 파일을 찾을 수 없습니다", status=404)
     return path
+
+
+# --- comparing runs ----------------------------------------------------------
+
+COMPARE_ROWS = [
+    ("rating", "등급"), ("ticker", "티커"), ("trade_date", "분석일"), ("source", "출처"),
+    ("llm_provider", "제공자"), ("deep_think_llm", "Deep 모델"), ("quick_think_llm", "Quick 모델"),
+    ("analysts", "분석가"), ("max_debate_rounds", "토론 라운드"), ("max_risk_discuss_rounds", "리스크 라운드"),
+    ("output_language", "출력 언어"), ("portfolio", "포트폴리오"), ("llm_calls", "LLM 호출"),
+    ("tokens", "토큰 (입력 / 출력)"),
+]
+
+
+def _compare_value(job: dict, key: str) -> str:
+    request = job.get("request") or {}
+    stats = (job.get("result") or {}).get("stats") or {}
+    if key in ("rating", "ticker", "trade_date", "source"):
+        value = job.get(key)
+    elif key == "analysts":
+        value = ", ".join(request.get("analysts") or [])
+    elif key == "portfolio":
+        value = "반영" if request.get("portfolio") else "없음"
+    elif key == "llm_calls":
+        value = stats.get("llm_calls")
+    elif key == "tokens":
+        value = f"{stats.get('tokens_in', 0):,} / {stats.get('tokens_out', 0):,}" if stats else None
+    else:
+        value = request.get(key)
+    return "" if value is None else str(value)
+
+
+def compare_runs(store: Store, ids: list[int]) -> dict:
+    """Two to four completed analyses side by side: their settings and each report section."""
+    from tradingagents_web.progress import SECTIONS
+
+    ids = list(dict.fromkeys(ids))
+    if not 2 <= len(ids) <= 4:
+        raise UserError("비교할 실행을 2개에서 4개까지 고르세요")
+    runs = [require_job(store, job_id, "analysis") for job_id in ids]
+    unfinished = [str(r["id"]) for r in runs if r["status"] != "completed"]
+    if unfinished:
+        raise UserError(f"완료된 실행만 비교할 수 있습니다 (#{', #'.join(unfinished)})")
+    rows = []
+    for key, label in COMPARE_ROWS:
+        values = [_compare_value(run, key) for run in runs]
+        rows.append({"key": key, "label": label, "values": values, "differs": len(set(values)) > 1})
+    sections = []
+    for key, title in SECTIONS:
+        contents = [((run.get("result") or {}).get("sections") or {}).get(key) for run in runs]
+        if any(contents):
+            sections.append({"key": key, "title": title, "contents": contents,
+                             "same": len({(c or "").strip() for c in contents}) == 1})
+    return {"runs": runs, "rows": rows, "sections": sections,
+            "same_ticker": len({r["ticker"] for r in runs}) == 1}
 
 
 # --- memory log and checkpoints ---------------------------------------------

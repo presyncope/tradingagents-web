@@ -1,0 +1,75 @@
+{% extends "base.html" %}
+{% block title %}{{ schedule.name if schedule else '새 예약' }}{% endblock %}
+{% block content %}
+<h1>{{ schedule.name if schedule else '새 예약' }}</h1>
+{% if error %}<p class="error">{{ error }}</p>{% endif %}
+{% if request.query_params.get('saved') %}<p class="notice">저장했습니다.</p>{% endif %}
+{% if schedule %}
+<p class="muted small">
+  다음 실행: {{ (schedule.next_run_at | when) if schedule.enabled else '꺼짐' }} · 최근 실행: {{ (schedule.last_run_at | when) or '-' }}
+  {% if schedule.last_error %}<br><span class="error">{{ schedule.last_error }}</span>{% endif %}
+</p>
+{% endif %}
+
+<form method="post" action="{{ '/schedules/%d' % schedule.id if schedule else '/schedules' }}">
+  <div class="model-pair">
+    <label>이름 <input type="text" name="name" value="{{ source.name }}" placeholder="장 마감 후 관심 종목" required></label>
+    <label>티커 <span class="muted small">(쉼표나 공백으로 구분)</span>
+      <input type="text" name="tickers" value="{{ source.tickers | join(', ') }}" placeholder="NVDA, AAPL" required></label>
+  </div>
+  <fieldset class="analysts">
+    <legend><b>요일</b></legend>
+    {% for name in weekdays %}
+    <label><input type="checkbox" name="days" value="{{ loop.index0 }}" {% if loop.index0 in source.days %}checked{% endif %}> {{ name }}</label>
+    {% endfor %}
+  </fieldset>
+  <label>시각 <span class="muted small">({{ tz }})</span>
+    <input type="time" name="time" value="{{ source.time }}" required style="max-width: 12rem">
+  </label>
+
+  <fieldset class="analysts">
+    <legend><b>분석가</b></legend>
+    {% for key, label in analyst_choices %}
+    <label><input type="checkbox" name="analysts" value="{{ key }}" {% if key in values.analysts %}checked{% endif %}> {{ label }}</label>
+    {% endfor %}
+  </fieldset>
+
+  {% include "partials/llm_fields.html" %}
+
+  {% set run = source.request or {} %}
+  <fieldset>
+    <label><input type="checkbox" name="use_portfolio" {% if run.use_portfolio %}checked{% endif %} {% if not has_portfolio %}disabled{% endif %}>
+      실행 시점의 포트폴리오를 반영</label>
+    <label><input type="checkbox" name="checkpoint" {% if run.checkpoint %}checked{% endif %}> 체크포인트 저장</label>
+    <label><input type="checkbox" name="enabled" {% if source.enabled %}checked{% endif %}> 사용</label>
+  </fieldset>
+  <button type="submit">저장</button>
+</form>
+
+{% if schedule %}
+<div class="row">
+  <form method="post" action="/schedules/{{ schedule.id }}/run" class="inline"><button class="outline">지금 실행</button></form>
+  <form method="post" action="/schedules/{{ schedule.id }}/delete" class="inline right"
+        onsubmit="return confirm('이 예약을 삭제할까요? 이미 만든 실행 기록은 남습니다.')"><button class="outline contrast">삭제</button></form>
+</div>
+
+<h2>이 예약으로 만든 실행</h2>
+{% if jobs %}
+<table>
+  <thead><tr><th>#</th><th>티커</th><th>분석일</th><th>상태</th><th>등급</th><th>생성</th></tr></thead>
+  <tbody>
+  {% for job in jobs %}
+    <tr>
+      <td><a href="{{ job_url(job) }}">{{ job.id }}</a></td><td>{{ job.ticker }}</td><td>{{ job.trade_date }}</td>
+      <td><span class="badge {{ job.status }}">{{ job.status | status_label }}</span></td>
+      <td>{% if job.rating %}<span class="rating {{ job.rating | rating_class }}">{{ job.rating }}</span>{% endif %}</td>
+      <td class="small">{{ job.created_at | when }}</td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% else %}
+<p class="empty">아직 없습니다.</p>
+{% endif %}
+{% endif %}
+{% endblock %}

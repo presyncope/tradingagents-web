@@ -160,6 +160,41 @@ class BacktestRequest(LLMChoice):
     use_portfolio: bool = False
 
 
+class ScheduleRequest(LLMChoice):
+    """A recurring analysis: these tickers on these weekdays at this time.
+
+    The run choices left unset are filled from the saved defaults when the
+    schedule fires, and the portfolio (when used) is the one saved at that time.
+    """
+
+    name: str = Field(min_length=1, max_length=100)
+    tickers: list[str]
+    days: list[int] = Field(default_factory=lambda: [0, 1, 2, 3, 4])   # 0 = Monday
+    time: str = "17:00"
+    enabled: bool = True
+    analysts: list[str] | None = None
+    use_portfolio: bool = False
+    checkpoint: bool | None = None
+
+    @field_validator("days")
+    @classmethod
+    def _weekdays(cls, days: list[int]) -> list[int]:
+        if not days or any(d not in range(7) for d in days):
+            raise ValueError("요일을 하나 이상 고르세요 (0=월 ... 6=일)")
+        return sorted(set(days))
+
+    @field_validator("time")
+    @classmethod
+    def _clock(cls, value: str) -> str:
+        try:
+            hour, minute = (int(p) for p in value.strip().split(":"))
+        except ValueError:
+            raise ValueError(f"시각은 HH:MM 형식입니다: {value!r}") from None
+        if not (0 <= hour < 24 and 0 <= minute < 60):
+            raise ValueError(f"시각이 올바르지 않습니다: {value!r}")
+        return f"{hour:02d}:{minute:02d}"
+
+
 LLM_KEYS = list(LLMChoice.model_fields)
 
 

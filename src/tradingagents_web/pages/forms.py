@@ -109,10 +109,16 @@ def choices() -> dict:
 
 
 def model_menu(provider: str, mode: str, selected: str | None) -> dict:
-    """Options for one model select, and the custom ID when the model is not listed."""
+    """Options for one model select, the chosen model first when the catalog does not list it.
+
+    Any model ID the provider serves is accepted (e.g. a Flash-Lite model as the
+    deep model), so a saved choice outside the menu is shown as an entry of its own
+    rather than hidden in the free-text box behind a different selection.
+    """
     options = model_options(provider, mode)
     listed = {value for _, value in options}
-    custom = selected if selected and selected not in listed else ""
+    if selected and selected not in listed:
+        options = [(f"{selected} (직접 지정)", selected), *options]
     if not selected and options:
         selected = options[0][1]
-    return {"options": options, "selected": selected, "custom": custom, "mode": mode}
+    return {"options": options, "selected": selected, "custom": "", "mode": mode}

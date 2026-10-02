@@ -18,6 +18,8 @@ dependencies = [
     "markdown-it-py>=3.0",
     "nh3>=0.2.17",
     "python-dotenv>=1.0",
+    # IANA zones for TRADINGAGENTS_WEB_TZ where the system has no tz database (slim images).
+    "tzdata>=2024.1",
 ]
 
 [project.scripts]
@@ -51,4 +53,4 @@ ignore = ["E501"]
 
 [tool.ruff.lint.flake8-bugbear]
 # FastAPI's dependency markers are meant to be called in argument defaults.
-extend-immutable-calls = ["fastapi.Depends"]
+extend-immutable-calls = ["fastapi.Depends", "fastapi.Query"]

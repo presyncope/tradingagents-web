@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import asyncio
 import hmac
+import logging
 from contextlib import asynccontextmanager
 from pathlib import Path
 from urllib.parse import urlsplit
@@ -12,11 +14,14 @@ from fastapi.responses import JSONResponse, PlainTextResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
+from tradingagents_web import cli_import
 from tradingagents_web.jobs.manager import JobManager
 from tradingagents_web.render import templates
 from tradingagents_web.services import UserError
 from tradingagents_web.settings import AppSettings
 from tradingagents_web.store.db import Store
+
+logger = logging.getLogger(__name__)
 
 COOKIE = "ta_token"
 OPEN_PATHS = ("/static/", "/login", "/healthz")
@@ -29,10 +34,23 @@ def create_app(settings: AppSettings | None = None, *, manager: JobManager | Non
     if manager is None and start_manager:
         manager = JobManager(settings.db_path, settings.max_workers, poll_interval=settings.poll_interval)
 
+    def import_cli_reports() -> None:
+        store = Store(settings.db_path, init=False)
+        try:
+            found = cli_import.import_reports(store)
+            if found["imported"]:
+                logger.info("Imported %d CLI report(s)", len(found["imported"]))
+        except Exception:
+            logger.exception("Importing CLI reports failed")
+        finally:
+            store.close()
+
     @asynccontextmanager
     async def lifespan(app: FastAPI):
         if manager is not None and start_manager:
             await manager.start()
+            if settings.import_on_start:
+                await asyncio.to_thread(import_cli_reports)
         yield
         if manager is not None and start_manager:
             await manager.stop()
