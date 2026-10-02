@@ -19,11 +19,15 @@ cp .env.example .env          # API 키를 채웁니다
 uv run tradingagents-web      # http://127.0.0.1:8000
 ```
 
-TradingAgents 저장소의 `.env`를 그대로 쓰려면 복사 대신 경로를 지정합니다.
+API 키를 TradingAgents 저장소의 `.env`에 이미 두었다면, 이 저장소의 `.env`에는 그 경로와 웹 설정만 적으면 됩니다. 이 `.env`를 먼저 읽고, 그다음 지정한 파일을 읽습니다.
 
 ```bash
-TRADINGAGENTS_WEB_ENV_FILE=../TradingAgents/.env uv run tradingagents-web
+# tradingagents-web/.env
+TRADINGAGENTS_WEB_ENV_FILE=/path/to/TradingAgents/.env
+TRADINGAGENTS_WEB_TZ=Asia/Seoul
 ```
+
+Docker에서는 지정한 경로가 컨테이너 안에 없으므로, API 키를 이 저장소의 `.env`에 직접 적어야 합니다.
 
 ### 다른 기기에서 접속
 
@@ -85,3 +89,7 @@ uv run ruff check src tests
 
 TradingAgents를 올릴 때는 `pyproject.toml`의 `tag`를 바꾸고 `uv lock --upgrade-package tradingagents` 후 테스트를 돌립니다.
 이 저장소는 TradingAgents의 공개 함수(`TradingAgentsGraph`, `backtest`, `TradingMemoryLog`, `PortfolioContext`, `checkpointer`, `model_catalog`)만 호출하고, `cli` 패키지는 쓰지 않습니다.
+
+## 라이선스
+
+포함하거나 가져온 서드파티 코드(htmx, Pico CSS, TradingAgents에서 옮긴 일부 코드)의 출처와 라이선스는 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)와 `LICENSES/`에 있습니다.
